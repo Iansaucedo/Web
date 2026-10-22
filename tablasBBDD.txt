@@ -8,13 +8,17 @@ telefono
 AsignacionPuesto:
 idMecanico
 idPuesto
-fecha
+fecha_inicio
+fecha_fin
 
 Puesto:
 idPuesto
+nombre
+estado
 
 Reparacion:
 idReparacion
+idVehiculo
 
 ReparacionMecanico:
 idReparacion
@@ -22,7 +26,10 @@ idMecanico
 fecha
 
 Vechiculo:
-idVehiculo
+idVehiculo (matricula)
+marca
+color
+id_cliente
 
 Cliente:
 idCliente
@@ -33,3 +40,23 @@ dni
 direccion
 correo
 telefono
+
+Piezas:
+idPieza
+nombre
+marca
+precio
+stock
+
+PiezasReparacion:
+idReparacion
+idPieza
+cantidad
+
+Compra:
+idCompra
+precio
+idPieza
+fecha
+cantidad
+
