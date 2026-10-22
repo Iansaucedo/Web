@@ -1,5 +1,9 @@
 Mecanico:
 idMecanico
+nombre
+apellido1
+apellido2
+telefono
 
 AsignacionPuesto:
 idMecanico
@@ -15,9 +19,17 @@ idReparacion
 ReparacionMecanico:
 idReparacion
 idMecanico
+fecha
 
 Vechiculo:
 idVehiculo
 
 Cliente:
 idCliente
+nombre
+apellido1
+apellido2
+dni
+direccion
+correo
+telefono
