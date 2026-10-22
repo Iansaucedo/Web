@@ -1,0 +1,19 @@
+CLIENTE:
+Como cliente quiero poder crear ordenes de reparacion para llevar las maquinas, ver el estado de esas ordenes y poder modicicarlas o cancelarlas. 
+	- Individual
+		
+	- Empresarial*
+	Quiero que me puedan llamar con los espacios libres en el taller en caso de que haya varias maquinas.
+
+JEFE DEL TALLER:
+Como jefe de taller quiero saber quién está trabajando en cada vehículo y cuantos vehículos se están reparando, además de las piezas ultilizadas. Quiero poder añadir piezas al catálogo, revisar que piezas que se usan 
+durante la reparación y las que se quitan de la máquina. También debe poder asignar mecánicos a puestos de reparación y marcarlos como ausentes. También podrá dar de alta y de baja puestos de reparación y nuevos mecánicos.
+
+MECANICO:
+El mecánico tiene que poder ver que ordenes de reparación tiene asignadas y poder marcarlas como completadas, pendientes o ausentes. Tiene que poner el tiempo que ha empleado y las piezas que ha usado y quitado; poner lo 
+que ha hecho a la máquina y añadir observaciones a la máquina, y poder pedir autorización al cliente para poder llevarlas a cabo. Tiene que poder pedir piezas que no haya en el taller.
+
+DUEÑO:
+Como dueño quiero saber cuantos clientes tengo al día, los empleados que están trabajando al día, la cantidad de puestos de reparación en uso y la frecuencia de uso durante las horas del día, además de la trazabilidad de
+trabajos hechos a los máquinas que entran al taller. El sistema debe gestionar las citas del taller y el vehiculo y cliente asociado a cada cita. A la cita debe asociar el proceso de reparación, diagnóstico, piezas y una
+linea de tiempo de los trabajos realizados por el mecánico que deben ser mostrados transparentemente al cliente.
