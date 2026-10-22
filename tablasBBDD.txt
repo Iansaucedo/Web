@@ -1,1 +1,23 @@
+Mecanico:
+idMecanico
 
+AsignacionPuesto:
+idMecanico
+idPuesto
+fecha
+
+Puesto:
+idPuesto
+
+Reparacion:
+idReparacion
+
+ReparacionMecanico:
+idReparacion
+idMecanico
+
+Vechiculo:
+idVehiculo
+
+Cliente:
+idCliente
