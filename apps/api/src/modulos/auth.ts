@@ -33,13 +33,14 @@ export async function resolverUsuario(emailBruto: string, nombre: string, google
 
 const googleConfigurado = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 if (googleConfigurado) {
+  const publicWebUrl = (process.env.PUBLIC_WEB_URL ?? '').trim().replace(/\/+$/, '');
   passport.use(
     new GoogleStrategy(
       {
         clientID: process.env.GOOGLE_CLIENT_ID!,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         // Ruta pública a través del proxy de Next, para que la cookie quede en el dominio web.
-        callbackURL: `${process.env.PUBLIC_WEB_URL}/api/auth/google/callback`,
+        callbackURL: `${publicWebUrl}/api/auth/google/callback`,
       },
       async (_at, _rt, profile, done) => {
         try {
