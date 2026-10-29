@@ -27,22 +27,12 @@ jobs:
         id: repo
         run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
-      - name: Compilar y subir imagen de la Web (Next.js)
+      - name: Compilar y subir imagen unificada (Web + API)
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: apps/web/Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ghcr.io/${{ steps.repo.outputs.OWNER }}/web:latest
             ghcr.io/${{ steps.repo.outputs.OWNER }}/web:${{ github.sha }}
-
-      - name: Compilar y subir imagen de la API (Express)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: apps/api/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ steps.repo.outputs.OWNER }}/api:latest
-            ghcr.io/${{ steps.repo.outputs.OWNER }}/api:${{ github.sha }}
