@@ -8,6 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "emails:preview": "tsx scripts/preview-emails.ts",
+    "email:test": "tsx scripts/test-email.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "mutaciones": "tsx scripts/mutaciones.ts"
   },

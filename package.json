@@ -16,6 +16,7 @@
     "dev:api": "npm run dev -w api",
     "dev:web": "npm run dev -w web",
     "emails:preview": "npm run emails:preview -w api",
+    "email:test": "npm run email:test -w api",
     "mutaciones": "npm run mutaciones -w api"
   },
   "prisma": {

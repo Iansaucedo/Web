@@ -54,7 +54,14 @@ Entrad siempre por `http://localhost:3000`: el login y la cookie pasan por el re
 `API_INTERNAL_URL` se lee **al compilar** la web (`next build`), porque Next fija ahí las rewrites.
 
 - **Swagger:** `http://localhost:4000/api/docs` (JSON en `/api/openapi.json`). Un test falla si alguna ruta queda sin documentar.
-- **Emails:** `npm run emails:preview` regenera `docs/emails/`. Sin `SMTP_HOST`, los emails se escriben en el log.
+- **Emails:** `npm run emails:preview` regenera `docs/emails/`. Probar envío con `npm run email:test -- destino@ejemplo.com`. Sin `SMTP_HOST`, los emails se escriben en el log.
+
+## Despliegue en Azure (CI/CD con GitHub Actions)
+
+El proyecto incluye flujos de trabajo de **GitHub Actions** para compilar, migrar la base de datos y desplegar la API y la Web en **Azure App Service**:
+- Flujo principal: [`.github/workflows/deploy-azure.yml`](.github/workflows/deploy-azure.yml)
+- Flujo con contenedores Docker: [`.github/workflows/deploy-azure-containers.yml`](.github/workflows/deploy-azure-containers.yml)
+- Guía completa de configuración de recursos, secretos y servicio SMTP (SendGrid, Azure Communication Services, Office 365): [`docs/DESPLIEGUE_AZURE.md`](docs/DESPLIEGUE_AZURE.md).
 
 ## Tests
 
