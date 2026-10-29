@@ -68,7 +68,48 @@ npm run email:test -- tu-correo@ejemplo.com
 
 ---
 
-## 2. Preparación de Recursos en Azure
+## 2. Configuración de Google OAuth 2.0 (Inicio de Sesión)
+
+La aplicación utiliza **Google OAuth 2.0** a través de Passport en la API (`apps/api/src/modulos/auth.ts`) y reenvía las solicitudes desde el dominio de la Web (`apps/web`) para que las cookies de sesión se almacenen de forma *first-party* en el navegador del usuario.
+
+### Pasos en Google Cloud Console
+
+1. Accede a la [Consola de Google Cloud](https://console.cloud.google.com/).
+2. Crea un proyecto nuevo o selecciona el existente (ej. `TallerPro`).
+3. Ve a **APIs y servicios > Pantalla de consentimiento de OAuth**:
+   - Tipo de usuario: **Externo** (*External*).
+   - Nombre de la aplicación: `TallerPro`.
+   - Correo electrónico de asistencia y de contacto del desarrollador.
+   - En **Dominios autorizados** (*Authorized domains*), añade: `azurewebsites.net` (o tu dominio personalizado si utilizas uno).
+4. Ve a **APIs y servicios > Credenciales**:
+   - Haz clic en **+ Crear credenciales > ID de cliente de OAuth**.
+   - Tipo de aplicación: **Aplicación web**.
+   - Nombre: `TallerPro Azure Web`.
+   - **Orígenes autorizados de JavaScript** (*Authorized JavaScript origins*):
+     - `https://taller-web.azurewebsites.net` *(o tu URL real del frontend)*
+     - `http://localhost:3000` *(para desarrollo local)*
+   - **URIs de redireccionamiento autorizados** (*Authorized redirect URIs*):
+     - `https://taller-web.azurewebsites.net/api/auth/google/callback`
+     - `http://localhost:3000/api/auth/google/callback` *(para desarrollo local)*
+5. Copia el **ID de cliente** (*Client ID*) y el **Secreto de cliente** (*Client Secret*).
+
+### Variables obligatorias en Azure App Service (`taller-api`)
+
+En la Web App de la API (`taller-api`):
+- `GOOGLE_CLIENT_ID`: El ID de cliente copiado de Google Cloud Console.
+- `GOOGLE_CLIENT_SECRET`: El secreto de cliente de Google Cloud Console.
+- `PUBLIC_WEB_URL`: `https://taller-web.azurewebsites.net`  
+  *(Debe ser la URL pública del frontend Next.js, no de la API, para que la redirección tras el inicio de sesión fije la cookie en el dominio que ve el usuario).*
+
+> [!TIP]
+> **Modo Pruebas (sin Google):** Si necesitas probar el sistema en Azure o localmente sin configurar Google OAuth:
+> - Configura en la API: `NODE_ENV=test`
+> - Configura en la Web: `NEXT_PUBLIC_ACCESO_PRUEBAS=1`
+> Esto activará botones de acceso rápido directo en `/login` para entrar con roles de Cliente, Mecánico, Jefe o Dueño.
+
+---
+
+## 3. Preparación de Recursos en Azure
 
 Para desplegar la aplicación completa necesitarás:
 
