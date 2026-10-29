@@ -1,0 +1,12 @@
+stateDiagram-v2
+  [*] --> EN_DIAGNOSTICO : al recibir el vehiculo
+  EN_DIAGNOSTICO --> ESPERANDO_AUTORIZACION : mecanico envia solicitud
+  ESPERANDO_AUTORIZACION --> EN_REPARACION : cliente acepta al menos una partida
+  ESPERANDO_AUTORIZACION --> RECHAZADA : rechaza todo en la primera solicitud
+  EN_REPARACION --> ESPERANDO_AUTORIZACION : nueva solicitud
+  EN_REPARACION --> ESPERANDO_PIEZAS : pedido de pieza
+  ESPERANDO_PIEZAS --> EN_REPARACION : piezas recibidas
+  EN_REPARACION --> COMPLETADA : mecanico termina (se genera el PDF)
+  COMPLETADA --> ENTREGADA : jefe entrega el vehiculo
+  RECHAZADA --> ENTREGADA : se devuelve sin reparar
+  ENTREGADA --> [*]

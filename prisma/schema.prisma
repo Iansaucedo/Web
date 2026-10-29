@@ -1,0 +1,623 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Usuarios y roles ────────────────────────────────────────────────
+
+enum Rol {
+  CLIENTE
+  MECANICO
+  JEFE
+  DUENO
+}
+
+enum TipoCliente {
+  INDIVIDUAL
+  EMPRESA
+}
+
+model Usuario {
+  id               String         @id @default(cuid())
+  email            String         @unique
+  nombre           String
+  googleId         String?        @unique
+  rol              Rol            @default(CLIENTE)
+  activo           Boolean        @default(true)
+  creadoEn         DateTime       @default(now())
+  // Autobaja: el usuario puede recuperarla entrando antes de 14 días; después se desliga Google y se libera el email.
+  bajaSolicitadaEn DateTime?
+  desvinculadoEn   DateTime?
+  cliente          Cliente?
+  empleado         Empleado?
+  notificaciones   Notificacion[]
+  invitaciones     Invitacion[]   @relation("InvitacionCreadaPor")
+  eventos          EventoOrden[]
+}
+
+// Alta de mecánicos (por el jefe) y jefes (por el dueño). Se consume en el primer login.
+model Invitacion {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  rol         Rol
+  creadaPorId String
+  creadaPor   Usuario   @relation("InvitacionCreadaPor", fields: [creadaPorId], references: [id])
+  usadaEn     DateTime?
+  creadaEn    DateTime  @default(now())
+}
+
+model Cliente {
+  id                String            @id @default(cuid())
+  usuarioId         String            @unique
+  usuario           Usuario           @relation(fields: [usuarioId], references: [id])
+  tipo              TipoCliente
+  telefono          String
+  razonSocial       String?
+  nif               String?
+  vehiculos         Vehiculo[]
+  citas             Cita[]
+  reservasMultiples ReservaMultiple[]
+}
+
+model Empleado {
+  id               String                  @id @default(cuid())
+  usuarioId        String                  @unique
+  usuario          Usuario                 @relation(fields: [usuarioId], references: [id])
+  activo           Boolean                 @default(true)
+  asignaciones     AsignacionPuesto[]
+  ausencias        Ausencia[]
+  trabajos         RegistroTrabajo[]
+  observaciones    Observacion[]
+  solicitudes      SolicitudAutorizacion[]
+  piezasUsadas     PiezaUsada[]
+  piezasQuitadas   PiezaQuitada[]
+  pedidosCreados   PedidoPieza[]           @relation("PedidoCreadoPor")
+  pedidosAprobados PedidoPieza[]           @relation("PedidoAprobadoPor")
+  fichajes         Fichaje[]               @relation("FichajeEmpleado")
+  correcciones     Fichaje[]               @relation("FichajeCorregidoPor")
+}
+
+// ─── Vehículos, citas y reservas ──────────────────────────────────────
+
+enum Combustible {
+  GASOLINA
+  DIESEL
+  HIBRIDO
+  ELECTRICO
+  GLP
+}
+
+model Vehiculo {
+  id          String                    @id @default(cuid())
+  clienteId   String
+  cliente     Cliente                   @relation(fields: [clienteId], references: [id])
+  matricula   String                    @unique
+  bastidor    String?                   @unique // VIN
+  marca       String
+  modelo      String
+  anio        Int?
+  combustible Combustible?
+  kilometros  Int? // último valor conocido; cada orden guarda el de entrada
+  // Baja lógica: un vehículo con historial no se borra (dejaría citas y órdenes huérfanas).
+  eliminadoEn DateTime?
+  citas       Cita[]
+  ordenes     Orden[]
+  reservas    ReservaMultipleVehiculo[]
+}
+
+enum EstadoCita {
+  PENDIENTE
+  CONFIRMADA
+  RECIBIDA
+  CANCELADA
+  NO_PRESENTADO
+}
+
+model Cita {
+  id                  String           @id @default(cuid())
+  clienteId           String
+  cliente             Cliente          @relation(fields: [clienteId], references: [id])
+  vehiculoId          String
+  vehiculo            Vehiculo         @relation(fields: [vehiculoId], references: [id])
+  inicio              DateTime         @db.Timestamptz // inicio de la franja, en UTC
+  fin                 DateTime         @db.Timestamptz
+  estado              EstadoCita       @default(PENDIENTE)
+  descripcionProblema String
+  reservaMultipleId   String?
+  reservaMultiple     ReservaMultiple? @relation(fields: [reservaMultipleId], references: [id])
+  orden               Orden?
+  creadaEn            DateTime         @default(now())
+  recordatorioEn      DateTime? // cuándo se envió el recordatorio de 24 h (null: aún no)
+
+  @@index([inicio, estado])
+}
+
+enum EstadoReservaMultiple {
+  EN_ESPERA
+  HUECO_OFRECIDO
+  CONVERTIDA
+  CANCELADA
+}
+
+model ReservaMultiple {
+  id               String                    @id @default(cuid())
+  numero           Int                       @unique @default(autoincrement()) // se muestra como RM-07
+  clienteId        String
+  cliente          Cliente                   @relation(fields: [clienteId], references: [id])
+  fechasPreferidas DateTime[]                @db.Date
+  fechaOfrecida    DateTime?                 @db.Date
+  franjasOfrecidas DateTime[]                @db.Timestamptz // una por vehículo, en el orden de `vehiculos`
+  convertidaEn     DateTime?
+  estado           EstadoReservaMultiple     @default(EN_ESPERA)
+  vehiculos        ReservaMultipleVehiculo[]
+  citas            Cita[]
+  creadaEn         DateTime                  @default(now())
+}
+
+model ReservaMultipleVehiculo {
+  reservaId  String
+  reserva    ReservaMultiple @relation(fields: [reservaId], references: [id])
+  vehiculoId String
+  vehiculo   Vehiculo        @relation(fields: [vehiculoId], references: [id])
+
+  @@id([reservaId, vehiculoId])
+}
+
+// ─── Taller: puestos, asignaciones, ausencias ────────────────────────
+
+model Puesto {
+  id           String             @id @default(cuid())
+  nombre       String             @unique
+  activo       Boolean            @default(true)
+  ordenes      Orden[]
+  asignaciones AsignacionPuesto[]
+  ocupaciones  OcupacionPuesto[]
+}
+
+// Un mecánico por puesto y día.
+model AsignacionPuesto {
+  id         String   @id @default(cuid())
+  puestoId   String
+  puesto     Puesto   @relation(fields: [puestoId], references: [id])
+  empleadoId String
+  empleado   Empleado @relation(fields: [empleadoId], references: [id])
+  fecha      DateTime @db.Date
+
+  @@unique([puestoId, fecha])
+}
+
+enum TipoAusencia {
+  VACACIONES
+  BAJA_MEDICA
+  PERSONAL
+  OTRA
+}
+
+// Un registro por día de ausencia (las vacaciones o una baja médica de varios días crean varios).
+model Ausencia {
+  id         String       @id @default(cuid())
+  empleadoId String
+  empleado   Empleado     @relation(fields: [empleadoId], references: [id])
+  fecha      DateTime     @db.Date
+  tipo       TipoAusencia @default(OTRA)
+  nota       String?
+
+  @@unique([empleadoId, fecha])
+}
+
+// Se abre al colocar el vehículo en el puesto y se cierra al entregarla.
+model OcupacionPuesto {
+  id       String    @id @default(cuid())
+  puestoId String
+  puesto   Puesto    @relation(fields: [puestoId], references: [id])
+  ordenId  String
+  orden    Orden     @relation(fields: [ordenId], references: [id])
+  inicio   DateTime  @default(now())
+  fin      DateTime?
+
+  @@index([puestoId, inicio])
+}
+
+// ─── Orden de reparación ─────────────────────────────────────────────
+
+enum EstadoOrden {
+  EN_DIAGNOSTICO
+  ESPERANDO_AUTORIZACION
+  EN_REPARACION
+  ESPERANDO_PIEZAS
+  COMPLETADA
+  RECHAZADA
+  ENTREGADA
+}
+
+model Orden {
+  id              String                  @id @default(cuid())
+  numero          Int                     @unique @default(autoincrement()) // se muestra como OR-0001
+  citaId          String                  @unique
+  cita            Cita                    @relation(fields: [citaId], references: [id])
+  vehiculoId      String
+  vehiculo        Vehiculo                @relation(fields: [vehiculoId], references: [id])
+  puestoId        String?
+  puesto          Puesto?                 @relation(fields: [puestoId], references: [id])
+  estado          EstadoOrden             @default(EN_DIAGNOSTICO)
+  diagnostico     String?
+  kmEntrada       Int
+  kmSalida        Int? // los pone el mecánico al completar; el jefe los confirma o corrige al entregar
+  entregaEstimada DateTime?               @db.Timestamptz // la ve el cliente; la fijan mecánico o jefe
+  notasRecepcion  String? // daños visibles, objetos, etc.
+  abiertaEn       DateTime                @default(now())
+  completadaEn    DateTime?
+  solicitudes     SolicitudAutorizacion[]
+  trabajos        RegistroTrabajo[]
+  observaciones   Observacion[]
+  eventos         EventoOrden[]
+  ocupaciones     OcupacionPuesto[]
+
+  @@index([estado])
+}
+
+enum EstadoSolicitud {
+  PENDIENTE
+  RESPONDIDA
+}
+
+model SolicitudAutorizacion {
+  id                String          @id @default(cuid())
+  ordenId           String
+  orden             Orden           @relation(fields: [ordenId], references: [id])
+  creadaPorId       String
+  creadaPor         Empleado        @relation(fields: [creadaPorId], references: [id])
+  estado            EstadoSolicitud @default(PENDIENTE)
+  respondidaEn      DateTime?
+  comentarioCliente String?
+  creadaEn          DateTime        @default(now())
+  partidas          Partida[]
+}
+
+enum EstadoPartida {
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+}
+
+model Partida {
+  id                      String                @id @default(cuid())
+  solicitudId             String
+  solicitud               SolicitudAutorizacion @relation(fields: [solicitudId], references: [id])
+  descripcion             String
+  horasEstimadas          Decimal               @db.Decimal(5, 2)
+  importeEstimadoCentimos Int // sin IVA
+  estado                  EstadoPartida         @default(PENDIENTE)
+  respondidaEn            DateTime?
+  terminadaEn             DateTime? // el mecánico marca el trabajo como hecho
+  piezasUsadas            PiezaUsada[]
+  piezasQuitadas          PiezaQuitada[]
+  pedidos                 PedidoPieza[]
+  trabajos                RegistroTrabajo[]
+  fotos                   FotoTrabajo[]
+}
+
+// Fotos que el mecánico adjunta a un trabajo propuesto (el cliente las ve al decidir).
+// Se suben primero (sin trabajo) y se adjuntan al enviar la solicitud; las que nadie adjunta se borran a las 24 h.
+// Los bytes van en PostgreSQL: se guardan en la misma transacción que el resto y entran en la misma copia de seguridad.
+model FotoTrabajo {
+  id            String   @id @default(cuid())
+  partidaId     String?
+  partida       Partida? @relation(fields: [partidaId], references: [id])
+  url           String? // solo en fotos antiguas guardadas por URL; las subidas se sirven en /api/fotos/:id
+  datos         Bytes?
+  tipoContenido String? // image/jpeg, image/png o image/webp, comprobado con los bytes
+  bytes         Int?
+  descripcion   String?
+  subidaPorId   String
+  subidaEn      DateTime @default(now())
+
+  @@index([partidaId, subidaEn])
+}
+
+// ─── Piezas ──────────────────────────────────────────────────────────
+
+enum CategoriaPieza {
+  FRENOS
+  MOTOR
+  FILTROS
+  ACEITES
+  ENCENDIDO
+  ELECTRICIDAD
+  SUSPENSION
+  TRANSMISION
+  CARROCERIA
+  NEUMATICOS
+  OTRAS
+}
+
+model Pieza {
+  id             String            @id @default(cuid())
+  categoria      CategoriaPieza    @default(OTRAS)
+  stockMinimo    Int               @default(2) // en este valor o por debajo: «stock bajo»
+  referencia     String            @unique
+  nombre         String
+  precioCentimos Int
+  stock          Int               @default(0)
+  activa         Boolean           @default(true)
+  usos           PiezaUsada[]
+  pedidos        PedidoPieza[]
+  movimientos    MovimientoStock[]
+}
+
+enum TipoMovimientoStock {
+  ALTA // stock inicial al dar de alta la pieza
+  AJUSTE // el jefe suma o resta unidades (con motivo)
+  CUADRE // el jefe fija el recuento real tras un inventario (con motivo)
+  USO // montada en una reparación
+  RECEPCION // llega un pedido
+}
+
+// Registro de cada cambio de stock. Solo inserción: la suma de `delta` es el stock actual.
+model MovimientoStock {
+  id           String              @id @default(cuid())
+  piezaId      String
+  pieza        Pieza               @relation(fields: [piezaId], references: [id], onDelete: Cascade)
+  tipo         TipoMovimientoStock
+  delta        Int
+  stockAntes   Int
+  stockDespues Int
+  motivo       String?
+  usuarioId    String
+  ordenId      String?
+  fecha        DateTime            @default(now())
+
+  @@index([piezaId, fecha])
+}
+
+model PiezaUsada {
+  id                     String   @id @default(cuid())
+  partidaId              String
+  partida                Partida  @relation(fields: [partidaId], references: [id])
+  piezaId                String
+  pieza                  Pieza    @relation(fields: [piezaId], references: [id])
+  cantidad               Int
+  precioUnitarioCentimos Int // precio en el momento de usarla
+  empleadoId             String
+  empleado               Empleado @relation(fields: [empleadoId], references: [id])
+  fecha                  DateTime @default(now())
+}
+
+enum DestinoPiezaQuitada {
+  DESECHADA
+  DEVUELTA_CLIENTE
+}
+
+model PiezaQuitada {
+  id          String              @id @default(cuid())
+  partidaId   String
+  partida     Partida             @relation(fields: [partidaId], references: [id])
+  descripcion String
+  cantidad    Int
+  destino     DestinoPiezaQuitada
+  empleadoId  String
+  empleado    Empleado            @relation(fields: [empleadoId], references: [id])
+  fecha       DateTime            @default(now())
+}
+
+enum EstadoPedido {
+  PENDIENTE
+  APROBADO
+  PEDIDO
+  RECIBIDO
+  RECHAZADO
+}
+
+model PedidoPieza {
+  id               String       @id @default(cuid())
+  partidaId        String
+  partida          Partida      @relation(fields: [partidaId], references: [id])
+  piezaId          String? // null si la pieza no está en el catálogo
+  pieza            Pieza?       @relation(fields: [piezaId], references: [id])
+  descripcionLibre String?
+  cantidad         Int
+  estado           EstadoPedido @default(PENDIENTE)
+  creadoPorId      String
+  creadoPor        Empleado     @relation("PedidoCreadoPor", fields: [creadoPorId], references: [id])
+  aprobadoPorId    String?
+  aprobadoPor      Empleado?    @relation("PedidoAprobadoPor", fields: [aprobadoPorId], references: [id])
+  creadoEn         DateTime     @default(now())
+  actualizadoEn    DateTime     @updatedAt
+}
+
+// ─── Trabajo, observaciones y línea de tiempo ────────────────────────
+
+model RegistroTrabajo {
+  id          String   @id @default(cuid())
+  ordenId     String
+  orden       Orden    @relation(fields: [ordenId], references: [id])
+  partidaId   String
+  partida     Partida  @relation(fields: [partidaId], references: [id])
+  empleadoId  String
+  empleado    Empleado @relation(fields: [empleadoId], references: [id])
+  minutos     Int
+  descripcion String
+  fecha       DateTime @default(now())
+}
+
+model Observacion {
+  id         String   @id @default(cuid())
+  ordenId    String
+  orden      Orden    @relation(fields: [ordenId], references: [id])
+  empleadoId String
+  empleado   Empleado @relation(fields: [empleadoId], references: [id])
+  texto      String
+  interna    Boolean  @default(false)
+  fecha      DateTime @default(now())
+}
+
+enum TipoEvento {
+  ESTADO_CAMBIADO
+  PUESTO_ASIGNADO
+  SOLICITUD_CREADA
+  PARTIDA_RESPONDIDA
+  TRABAJO_REGISTRADO
+  PIEZA_USADA
+  PIEZA_QUITADA
+  PEDIDO_ACTUALIZADO
+  OBSERVACION
+  KM_CORREGIDOS
+}
+
+// Solo inserción: nunca se edita ni se borra.
+model EventoOrden {
+  id             String     @id @default(cuid())
+  ordenId        String
+  orden          Orden      @relation(fields: [ordenId], references: [id])
+  tipo           TipoEvento
+  actorId        String
+  actor          Usuario    @relation(fields: [actorId], references: [id])
+  payload        Json
+  visibleCliente Boolean    @default(true)
+  fecha          DateTime   @default(now())
+
+  @@index([ordenId, fecha])
+}
+
+// ─── Registro de jornada (fichaje) ───────────────────────────────────
+
+enum TipoFichaje {
+  ENTRADA
+  INICIO_PAUSA
+  FIN_PAUSA
+  SALIDA
+}
+
+// Solo inserción: una corrección crea un fichaje nuevo que sustituye al anterior
+// (sustituyeAId) y guarda quién la hizo y por qué. El original nunca se borra.
+model Fichaje {
+  id             String      @id @default(cuid())
+  empleadoId     String
+  empleado       Empleado    @relation("FichajeEmpleado", fields: [empleadoId], references: [id])
+  tipo           TipoFichaje
+  momento        DateTime    @db.Timestamptz
+  origen         String // "web", "tablet del taller", "corrección"
+  sustituyeAId   String?     @unique
+  sustituyeA     Fichaje?    @relation("CorreccionFichaje", fields: [sustituyeAId], references: [id])
+  sustituidoPor  Fichaje?    @relation("CorreccionFichaje")
+  corregidoPorId String?
+  corregidoPor   Empleado?   @relation("FichajeCorregidoPor", fields: [corregidoPorId], references: [id])
+  motivo         String?
+  creadoEn       DateTime    @default(now())
+
+  @@index([empleadoId, momento])
+}
+
+enum EstadoSolicitudCorreccion {
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+}
+
+model SolicitudCorreccionFichaje {
+  id          String                    @id @default(cuid())
+  empleadoId  String
+  fecha       DateTime                  @db.Date
+  tipo        TipoFichaje
+  horaPedida  DateTime                  @db.Timestamptz
+  motivo      String
+  estado      EstadoSolicitudCorreccion @default(PENDIENTE)
+  resueltaPor String?
+  creadaEn    DateTime                  @default(now())
+}
+
+// ─── Avisos y configuración ──────────────────────────────────────────
+
+model Notificacion {
+  id        String   @id @default(cuid())
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  tipo      String
+  mensaje   String
+  enlace    String?
+  leida     Boolean  @default(false)
+  creadaEn  DateTime @default(now())
+
+  @@index([usuarioId, leida])
+}
+
+// Una sola fila (id = 1).
+model ConfigTaller {
+  id                   Int    @id @default(1)
+  zonaHoraria          String @default("Europe/Madrid")
+  aperturaMinutos      Int    @default(480) // 08:00, minutos desde medianoche en hora local
+  cierreMinutos        Int    @default(1080) // 18:00
+  diasLaborables       Int[]  @default([1, 2, 3, 4, 5])
+  minutosFranja        Int    @default(30)
+  recepcionesPorFranja Int    @default(2)
+  vehiculosPorMecanico Int    @default(2)
+  tarifaHoraCentimos   Int    @default(4000)
+  ivaPorcentaje        Int    @default(21)
+  horasMinimasCancelar Int    @default(24)
+  jornadaMinutosDia    Int    @default(480) // jornada prevista por empleado y día
+}
+
+// ─── Fiabilidad: cola de emails e idempotencia ───────────────────────
+
+enum EstadoEmail {
+  PENDIENTE
+  ENVIADO
+  FALLIDO
+}
+
+// Bandeja de salida: se escribe en la misma transacción que el cambio que la provoca,
+// y un proceso aparte la envía con reintentos. Si SMTP cae, no se pierde ningún aviso.
+model EmailSaliente {
+  id                    String      @id @default(cuid())
+  para                  String
+  plantilla             String
+  datos                 Json
+  adjuntoFacturaOrdenId String? // se adjunta el PDF de la factura de esa orden
+  estado                EstadoEmail @default(PENDIENTE)
+  intentos              Int         @default(0)
+  proximoIntento        DateTime    @default(now()) @db.Timestamptz
+  ultimoError           String?
+  creadoEn              DateTime    @default(now())
+  enviadoEn             DateTime?
+
+  @@index([estado, proximoIntento])
+}
+
+// Respuesta guardada de cada POST con cabecera Idempotency-Key: un doble clic o un reintento
+// de red devuelve la misma respuesta en vez de repetir la operación.
+model ClaveIdempotencia {
+  id         String   @id @default(cuid())
+  usuarioId  String
+  clave      String
+  metodo     String
+  ruta       String
+  hashCuerpo String
+  codigo     Int?
+  respuesta  Json?
+  creadaEn   DateTime @default(now())
+
+  @@unique([usuarioId, clave])
+}
+
+enum ModoEliminacion {
+  BORRADO // la fila se borró; aquí queda su copia
+  BAJA // la fila sigue (baja lógica) porque otros registros dependen de ella
+}
+
+// Constancia de cada eliminación: copia del registro, quién, cuándo y por qué. Solo inserción.
+model RegistroEliminacion {
+  id        String          @id @default(cuid())
+  entidad   String
+  entidadId String
+  modo      ModoEliminacion
+  datos     Json
+  motivo    String?
+  usuarioId String
+  fecha     DateTime        @default(now())
+
+  @@index([entidad, entidadId])
+}
