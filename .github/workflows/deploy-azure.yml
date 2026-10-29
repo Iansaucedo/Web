@@ -1,0 +1,154 @@
+name: Despliegue en Azure (App Service)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22.x'
+
+jobs:
+  # -------------------------------------------------------------
+  # 1. Compilación, Pruebas y Empaquetado
+  # -------------------------------------------------------------
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente de Prisma
+        run: npx prisma generate
+
+      - name: Compilar API
+        run: npm run build -w api
+
+      - name: Compilar Web (Next.js Standalone)
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          # En producción Next reenvía /api/* a la URL interna o pública de la API en Azure
+          API_INTERNAL_URL: ${{ vars.API_INTERNAL_URL || 'https://taller-api.azurewebsites.net' }}
+        run: npm run build -w web
+
+      # Empaquetado para Azure App Service API
+      - name: Preparar artefacto de la API
+        run: |
+          mkdir -p dist-api/apps/api
+          cp -r apps/api/dist dist-api/apps/api/
+          cp apps/api/package.json dist-api/apps/api/
+          cp -r prisma dist-api/
+          cp package.json package-lock.json dist-api/
+          cd dist-api
+          npm ci --omit=dev --workspace=api --no-audit --no-fund
+          npx prisma generate
+          cd ..
+
+      - name: Subir artefacto de la API
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-artifact
+          path: dist-api
+          retention-days: 2
+
+      # Empaquetado para Azure App Service Web
+      - name: Preparar artefacto de la Web
+        run: |
+          mkdir -p dist-web
+          cp -r apps/web/.next/standalone/* dist-web/
+          mkdir -p dist-web/apps/web/.next
+          cp -r apps/web/.next/static dist-web/apps/web/.next/
+          if [ -d "apps/web/public" ]; then cp -r apps/web/public dist-web/apps/web/; fi
+
+      - name: Subir artefacto de la Web
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-artifact
+          path: dist-web
+          retention-days: 2
+
+  # -------------------------------------------------------------
+  # 2. Migración de Base de Datos en Azure PostgreSQL
+  # -------------------------------------------------------------
+  migrate-database:
+    name: Migrar Base de Datos Azure
+    needs: build
+    runs-on: ubuntu-latest
+    if: "${{ secrets.DATABASE_URL != '' }}"
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar Prisma CLI
+        run: npm install -g prisma@5.22.0
+
+      - name: Ejecutar migraciones en Azure PostgreSQL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: prisma migrate deploy
+
+  # -------------------------------------------------------------
+  # 3. Despliegue de la API (Express) a Azure App Service
+  # -------------------------------------------------------------
+  deploy-api:
+    name: Desplegar API en Azure
+    needs: [build, migrate-database]
+    # Se ejecuta incluso si la migración se omite por no tener DATABASE_URL configurada en secrets
+    if: always() && (needs.build.result == 'success') && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artefacto de la API
+        uses: actions/download-artifact@v4
+        with:
+          name: api-artifact
+          path: api-deploy
+
+      - name: Desplegar en Azure Web App (API)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_API_APP_NAME || 'taller-api' }}
+          publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
+          package: api-deploy
+          startup-command: 'node apps/api/dist/server.js'
+
+  # -------------------------------------------------------------
+  # 4. Despliegue del Frontend (Next.js) a Azure App Service
+  # -------------------------------------------------------------
+  deploy-web:
+    name: Desplegar Web en Azure
+    needs: [build, deploy-api]
+    if: always() && (needs.build.result == 'success') && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artefacto de la Web
+        uses: actions/download-artifact@v4
+        with:
+          name: web-artifact
+          path: web-deploy
+
+      - name: Desplegar en Azure Web App (Web)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEB_APP_NAME || 'taller-web' }}
+          publish-profile: ${{ secrets.AZURE_WEB_PUBLISH_PROFILE }}
+          package: web-deploy
+          startup-command: 'node apps/web/server.js'

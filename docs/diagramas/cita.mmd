@@ -1,0 +1,10 @@
+stateDiagram-v2
+  [*] --> PENDIENTE : cliente reserva
+  PENDIENTE --> CONFIRMADA : jefe confirma
+  PENDIENTE --> CANCELADA : cliente (>24 h) o jefe
+  CONFIRMADA --> CANCELADA : cliente (>24 h) o jefe
+  CONFIRMADA --> RECIBIDA : jefe recibe el vehiculo (abre la orden)
+  CONFIRMADA --> NO_PRESENTADO : jefe, el cliente no vino
+  RECIBIDA --> [*]
+  CANCELADA --> [*]
+  NO_PRESENTADO --> [*]

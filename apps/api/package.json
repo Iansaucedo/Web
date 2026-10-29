@@ -1,0 +1,47 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "emails:preview": "tsx scripts/preview-emails.ts",
+    "email:test": "tsx scripts/test-email.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mutaciones": "tsx scripts/mutaciones.ts"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
+    "cookie-parser": "1.4.7",
+    "date-fns": "4.1.0",
+    "date-fns-tz": "3.2.0",
+    "express": "4.22.3",
+    "helmet": "8.0.0",
+    "jsonwebtoken": "9.0.2",
+    "nodemailer": "10.2.1",
+    "passport": "0.7.0",
+    "passport-google-oauth20": "2.0.0",
+    "pdfkit": "0.15.1",
+    "swagger-ui-express": "5.0.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "10.1.0",
+    "@types/cookie-parser": "1.4.7",
+    "@types/express": "4.17.21",
+    "@types/jsonwebtoken": "9.0.7",
+    "@types/node": "22.9.0",
+    "@types/nodemailer": "6.4.16",
+    "@types/passport": "1.0.17",
+    "@types/passport-google-oauth20": "2.0.16",
+    "@types/pdfkit": "0.13.5",
+    "@types/supertest": "6.0.2",
+    "@types/swagger-ui-express": "4.1.6",
+    "supertest": "7.0.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

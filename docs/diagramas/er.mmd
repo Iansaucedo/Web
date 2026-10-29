@@ -1,0 +1,26 @@
+erDiagram
+  Usuario ||--o| Cliente : "es"
+  Usuario ||--o| Empleado : "es"
+  Cliente ||--o{ Vehiculo : tiene
+  Cliente ||--o{ Cita : pide
+  Cliente ||--o{ ReservaMultiple : pide
+  ReservaMultiple ||--o{ Cita : genera
+  Vehiculo ||--o{ Cita : "se trae en"
+  Cita ||--o| Orden : abre
+  Puesto ||--o{ Orden : aloja
+  Puesto ||--o{ OcupacionPuesto : registra
+  Orden ||--o{ OcupacionPuesto : ocupa
+  Empleado ||--o{ AsignacionPuesto : "trabaja en"
+  Puesto ||--o{ AsignacionPuesto : tiene
+  Empleado ||--o{ Ausencia : tiene
+  Orden ||--o{ SolicitudAutorizacion : tiene
+  SolicitudAutorizacion ||--|{ Partida : contiene
+  Partida ||--o{ PiezaUsada : justifica
+  Partida ||--o{ PiezaQuitada : justifica
+  Partida ||--o{ PedidoPieza : justifica
+  Pieza ||--o{ PiezaUsada : "se usa"
+  Pieza ||--o{ PedidoPieza : "se pide"
+  Orden ||--o{ RegistroTrabajo : tiene
+  Orden ||--o{ EventoOrden : "linea de tiempo"
+  Empleado ||--o{ RegistroTrabajo : escribe
+  Usuario ||--o{ Notificacion : recibe

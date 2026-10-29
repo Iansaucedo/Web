@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+.env
+.env.local
+test-results/
+e2e-informe/
+*.tsbuildinfo
+next-env.d.ts
+*.zip

@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+test-results
+e2e-informe
+exportar
+docs
+e2e

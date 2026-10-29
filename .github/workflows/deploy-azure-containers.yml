@@ -1,0 +1,77 @@
+name: Despliegue en Azure con Contenedores (Docker)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_api:
+        description: 'Desplegar contenedor de la API'
+        required: true
+        type: boolean
+        default: true
+      deploy_web:
+        description: 'Desplegar contenedor de la Web'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy-containers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar sesión en GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Construcción y publicación de la API
+      - name: Construir y publicar imagen Docker de la API
+        if: ${{ inputs.deploy_api }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:latest
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+
+      # Construcción y publicación de la Web
+      - name: Construir y publicar imagen Docker de la Web
+        if: ${{ inputs.deploy_web }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          build-args: |
+            API_INTERNAL_URL=${{ vars.API_INTERNAL_URL || 'https://taller-api.azurewebsites.net' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/web:latest
+            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+
+      # Despliegue a Azure Web App Container para API si hay perfil
+      - name: Desplegar contenedor API en Azure
+        if: "${{ inputs.deploy_api && secrets.AZURE_API_PUBLISH_PROFILE != '' }}"
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_API_APP_NAME || 'taller-api' }}
+          publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
+          images: 'ghcr.io/${{ github.repository }}/api:${{ github.sha }}'
+
+      # Despliegue a Azure Web App Container para Web si hay perfil
+      - name: Desplegar contenedor Web en Azure
+        if: "${{ inputs.deploy_web && secrets.AZURE_WEB_PUBLISH_PROFILE != '' }}"
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEB_APP_NAME || 'taller-web' }}
+          publish-profile: ${{ secrets.AZURE_WEB_PUBLISH_PROFILE }}
+          images: 'ghcr.io/${{ github.repository }}/web:${{ github.sha }}'
