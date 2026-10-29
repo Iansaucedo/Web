@@ -5,6 +5,14 @@ import { arrancarLimpiezaFotos } from './servicios/fotos';
 import { arrancarRecordatorios } from './servicios/recordatorios';
 import { log } from './lib/log';
 
+try {
+  process.loadEnvFile();
+} catch {
+  try {
+    process.loadEnvFile('../../.env');
+  } catch {}
+}
+
 const puerto = Number(process.env.PORT ?? 4000);
 const servidor = crearApp().listen(puerto, () => log('info', `API escuchando en :${puerto}`));
 const pararCorreo = arrancarCorreo();
