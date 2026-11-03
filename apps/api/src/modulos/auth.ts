@@ -83,15 +83,20 @@ definir({
     if (!googleConfigurado) throw sinGoogle();
     await new Promise<void>((resolve) => {
       passport.authenticate('google', { session: false }, async (err: unknown, u: Usuario | false) => {
-        if (err || !u) {
-          const codigo = err instanceof ErrorApp ? err.codigo : 'GOOGLE';
-          res.redirect(`/login?error=${encodeURIComponent(codigo)}`);
-          return resolve();
+        try {
+          if (err || !u) {
+            const codigo = err instanceof ErrorApp ? err.codigo : 'GOOGLE';
+            res.redirect(`/login?error=${encodeURIComponent(codigo)}`);
+            return;
+          }
+          fijarCookieSesion(res, { sub: u.id, rol: u.rol });
+          const cliente = u.rol === 'CLIENTE' ? await prisma.cliente.findUnique({ where: { usuarioId: u.id } }) : true;
+          res.redirect(cliente ? '/' : '/perfil');
+        } catch {
+          if (!res.headersSent) res.redirect('/login?error=GOOGLE');
+        } finally {
+          resolve();
         }
-        fijarCookieSesion(res, { sub: u.id, rol: u.rol });
-        const cliente = u.rol === 'CLIENTE' ? await prisma.cliente.findUnique({ where: { usuarioId: u.id } }) : true;
-        res.redirect(cliente ? '/' : '/perfil');
-        resolve();
       })(req, res);
     });
   },
