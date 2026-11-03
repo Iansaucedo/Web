@@ -37,7 +37,8 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
+COPY start.js ./
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "PORT=4000 node apps/api/dist/server.js & PORT=3000 HOSTNAME=0.0.0.0 node apps/web/server.js"]
+CMD ["node", "start.js"]

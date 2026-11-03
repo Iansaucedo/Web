@@ -5,6 +5,17 @@ import { arrancarLimpiezaFotos } from './servicios/fotos';
 import { arrancarRecordatorios } from './servicios/recordatorios';
 import { log } from './lib/log';
 
+process.on('uncaughtException', (error) => {
+  log('error', 'excepción no controlada; cerrando API', { error: String(error?.stack ?? error) });
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? String(reason.stack ?? reason.message) : String(reason);
+  log('error', 'promesa rechazada sin controlar; cerrando API', { error });
+  process.exit(1);
+});
+
 try {
   process.loadEnvFile();
 } catch {
