@@ -239,6 +239,37 @@ definir({
 
 definir({
   metodo: 'post',
+  ruta: '/reservas-multiples/:id/rechazar-oferta',
+  etiqueta: 'Reservas múltiples',
+  resumen: 'Rechazar el día ofrecido sin cancelar la reserva',
+  descripcion:
+    'Solo la empresa. La reserva vuelve a EN_ESPERA (sin día ni franjas ofrecidos) y se avisa a los jefes para que ofrezcan otro día. Para renunciar a la reserva entera, `cancelar`.',
+  acceso: ['CLIENTE'],
+  params: ParamId,
+  cuerpo: z.object({}).strict(),
+  respuesta: ReservaSchema,
+  errores: { 404: 'No existe o no es tuya', 409: 'SIN_OFERTA: no hay ningún día ofrecido' },
+  manejador: async ({ usuario, params }) => {
+    const r = await reservaAccesible(usuario, params.id);
+    await transaccion(async (tx) => {
+      await bloquear(tx, `reserva:${r.id}`);
+      const actual = await tx.reservaMultiple.findUniqueOrThrow({ where: { id: r.id } });
+      if (actual.estado !== 'HUECO_OFRECIDO' || !actual.fechaOfrecida) throw conflicto('SIN_OFERTA', 'No hay ningún día ofrecido que rechazar');
+      const rechazado = diaDeFechaDb(actual.fechaOfrecida);
+      await tx.reservaMultiple.update({ where: { id: r.id }, data: { estado: 'EN_ESPERA', fechaOfrecida: null, franjasOfrecidas: [] } });
+      await avisarRoles(tx, ['JEFE'], {
+        tipo: 'OFERTA_RECHAZADA',
+        mensaje: `${r.cliente.razonSocial} ha rechazado el ${diaLargo(rechazado)} (${numeroReserva(r.numero)})`,
+        enlace: '/jefe/empresas',
+        datos: { cliente: r.cliente.razonSocial, codigo: numeroReserva(r.numero), fecha: diaLargo(rechazado), numVehiculos: r.vehiculos.length, vehiculos: textoVehiculos(r) },
+      });
+    });
+    return aReserva(await prisma.reservaMultiple.findUniqueOrThrow({ where: { id: r.id }, include: incluir }));
+  },
+});
+
+definir({
+  metodo: 'post',
   ruta: '/reservas-multiples/:id/cancelar',
   etiqueta: 'Reservas múltiples',
   resumen: 'Cancelar una reserva múltiple',

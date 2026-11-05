@@ -27,6 +27,8 @@ const ESTADO: Record<ReservaMultiple['estado'], { texto: string; tono: Tono }> =
   CANCELADA: { texto: 'Cancelada', tono: 'neutro' },
 };
 
+const MENSAJE = { aceptar: 'Citas creadas', 'rechazar-oferta': 'Día rechazado. El taller te ofrecerá otro', cancelar: 'Reserva cancelada' } as const;
+
 export default function Reservas() {
   const { usuario } = useSesion();
   const vehiculos = useDatos<Lista<Vehiculo>>('/vehiculos');
@@ -48,8 +50,8 @@ export default function Reservas() {
       void reservas.recargar();
     }
   };
-  const actuar = async (r: ReservaMultiple, que: 'aceptar' | 'cancelar') => {
-    await accion.ejecutar(() => api.post(`/reservas-multiples/${r.id}/${que}`), que === 'aceptar' ? 'Citas creadas' : 'Reserva cancelada');
+  const actuar = async (r: ReservaMultiple, que: 'aceptar' | 'rechazar-oferta' | 'cancelar') => {
+    await accion.ejecutar(() => api.post(`/reservas-multiples/${r.id}/${que}`), MENSAJE[que]);
     void reservas.recargar();
   };
 
@@ -99,6 +101,7 @@ export default function Reservas() {
                     </Box>
                     <ChipEstado {...ESTADO[x.estado]} />
                     {x.estado === 'HUECO_OFRECIDO' && <Button variant="contained" disabled={accion.ocupado} onClick={() => actuar(x, 'aceptar')}>Aceptar el día</Button>}
+                    {x.estado === 'HUECO_OFRECIDO' && <Button disabled={accion.ocupado} onClick={() => actuar(x, 'rechazar-oferta')}>Rechazar</Button>}
                     {(x.estado === 'EN_ESPERA' || x.estado === 'HUECO_OFRECIDO') && <Button disabled={accion.ocupado} onClick={() => actuar(x, 'cancelar')}>Cancelar</Button>}
                   </CardContent>
                 </Card>

@@ -11,9 +11,9 @@ Estado a 27 de octubre de 2026. Para quien retome el proyecto.
 | Decisiones y cumplimiento (compartible) | https://claude.ai/artifact/2MtwWkedXTT4aChBoWnEcz |
 | Decisiones con detalle técnico | `docs/decisiones.md` |
 | Tests que deben fallar | `docs/mutaciones.md` (`npm run mutaciones -w api`) |
-| Vista previa de los 31 emails | `docs/emails/index.html` |
+| Vista previa de los 32 emails | `docs/emails/index.html` |
 | Arranque, tests, usuarios de prueba | `README.md` |
-| API documentada | `http://localhost:4000/api/docs` (79 rutas, 94 operaciones) |
+| API documentada | `http://localhost:4000/api/docs` (80 rutas, 95 operaciones) |
 
 ## Estado verificado
 
@@ -64,7 +64,7 @@ Por prioridad.
 
 ### Producto
 
-- [ ] **Rechazar una oferta de hueco sin cancelar la reserva.** En Figma la empresa tiene «Rechazar». Hace falta una ruta (p. ej. `POST /reservas-multiples/:id/rechazar-oferta`) que vuelva a `EN_ESPERA` y avise al jefe, con su test y su E2E.
+- [x] **Rechazar una oferta de hueco sin cancelar la reserva** (5 nov). `POST /reservas-multiples/:id/rechazar-oferta` (solo empresa): vuelve a `EN_ESPERA`, borra día y franjas ofrecidos y avisa a los jefes con el email nuevo `OFERTA_RECHAZADA`. Botón «Rechazar» en `/reservas`. **Pendiente de verificar:** escrito sin poder ejecutar nada (sin `node_modules` ni red); correr `npm test`, `npm run e2e` y `npm run emails:preview` (regenera `docs/emails/`) y ajustar los contadores de este documento si difieren. En Figma falta añadir el email y el estado.
 - [ ] **PDF del presupuesto previo**, el que aprueba el cliente, para imprimirlo. Hoy solo hay PDF de la factura final.
 - [ ] **Detalle de dos líneas en Notificaciones** (orden, vehículo, importe), como en Figma. Implica guardar datos estructurados en `Notificacion`.
 - [ ] **Tema oscuro.** No está en Figma: primero el diseño, después `theme.ts`.

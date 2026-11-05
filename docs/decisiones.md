@@ -319,7 +319,7 @@ añadieron las pantallas que estaban en el menú de Figma y no en la web: «Noti
 **Figma es la fuente de verdad.** Cada cambio de comportamiento se añade también al archivo de Figma:
 
 - **Pantallas y modales:** baja de cuenta, eliminar vehículo, baja y reactivación de mecánicos, motivo y nota en la ausencia, menú del lápiz, cuadre e historial de stock, constancias, «No tienes acceso».
-- **Emails:** 31 (incluidos `BAJA_CUENTA` y `RECORDATORIO_CITA`; `HUECO_OFRECIDO` con las horas de llegada).
+- **Emails:** 32 (incluidos `BAJA_CUENTA`, `RECORDATORIO_CITA` y `OFERTA_RECHAZADA`; `HUECO_OFRECIDO` con las horas de llegada).
 - **Pantallas nuevas:** «Mecánico · Historial» y «Mecánico · Catálogo de piezas (consulta)»; «Confirmar ya» en «Empresas en espera».
 - **Flujos:** los 6 nuevos de la tabla anterior.
 

@@ -32,7 +32,7 @@ const FILTROS: [Filtro, string][] = [['todas', 'Todas'], ['noLeidas', 'No leída
 /** Grupo e icono de cada aviso, como en Figma («Cliente · Notificaciones»). */
 function clase(tipo: string): { grupo: Filtro | null; icono: typeof EventIcon; destacado?: boolean } {
   if (tipo === 'SOLICITUD_AUTORIZACION') return { grupo: 'autorizaciones', icono: WarningIcon, destacado: true };
-  if (tipo === 'HUECO_OFRECIDO' || tipo.startsWith('RESERVA_MULTIPLE')) return { grupo: 'citas', icono: PhoneIcon };
+  if (tipo === 'HUECO_OFRECIDO' || tipo === 'OFERTA_RECHAZADA' || tipo.startsWith('RESERVA_MULTIPLE')) return { grupo: 'citas', icono: PhoneIcon };
   if (tipo.startsWith('CITA_') || tipo === 'RECORDATORIO_CITA') return { grupo: 'citas', icono: EventIcon };
   if (tipo === 'ORDEN_COMPLETADA') return { grupo: 'ordenes', icono: PdfIcon };
   if (/ORDEN|VEHICULO|PIEZAS|REPARACION|ENTREGA/.test(tipo)) return { grupo: 'ordenes', icono: BuildIcon, destacado: true };
