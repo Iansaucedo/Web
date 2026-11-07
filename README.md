@@ -18,7 +18,7 @@ El diseño completo está en el documento de diseño (PDF) y los diagramas en `d
 | `apps/api/src/modulos/` | Rutas por área: citas, órdenes, piezas, personal, fichajes, estadísticas… Cada ruta se define con `definir()` |
 | `apps/api/src/lib/ruta.ts` | Una sola definición por ruta: validación con zod, roles, idempotencia, Express y Swagger a la vez |
 | `apps/api/src/domain/` | Reglas de negocio puras (estados, capacidad, importes, jornada, respuesta del cliente) |
-| `apps/api/src/emails/` | Plantillas HTML de los 31 emails, maqueta común y cola de envío con reintentos |
+| `apps/api/src/emails/` | Plantillas HTML de los 32 emails, maqueta común y cola de envío con reintentos |
 | `apps/api/src/test/` | Tests de integración contra PostgreSQL real (Vitest + Supertest) |
 | `apps/web/src/app/` | Pantallas de Next.js + MUI por rol, siguiendo los flujos de Figma |
 | `e2e/` | Playwright: flujos completos, batería de QA y versión móvil |
@@ -66,8 +66,8 @@ El proyecto incluye flujos de trabajo de **GitHub Actions** para compilar, migra
 ## Tests
 
 ```bash
-npm test          # 268 tests de API: dominio + integración contra la base de datos taller_test
-npm run e2e       # 49 E2E con Playwright: flujos, QA, accesibilidad (axe) y móvil (base de datos taller_e2e)
+npm test          # 270 tests de API: dominio + integración contra la base de datos taller_test
+npm run e2e       # 50 E2E con Playwright: flujos, QA, accesibilidad (axe) y móvil (base de datos taller_e2e)
 npm run mutaciones  # rompe 27 reglas a propósito y comprueba que los tests fallan (docs/mutaciones.md)
 ```
 

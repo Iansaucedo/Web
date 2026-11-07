@@ -47,8 +47,12 @@ test('un diálogo abierto también es accesible (foco atrapado, etiquetas)', asy
   await page.goto('/vehiculos');
   await page.getByRole('button', { name: 'Añadir vehículo' }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  // Axe calcula el contraste con los colores que ve: hay que esperar a que acabe la animación de aparición
+  // (el fundido de MUI), o da falsos positivos en equipos lentos.
+  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
   const r = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa']).analyze();
-  expect(r.violations.map((v) => v.id)).toEqual([]);
+  const graves = r.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} × ${v.nodes[0]?.target.join(' ')}`);
+  expect(graves, graves.join('\n')).toEqual([]);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();
 });

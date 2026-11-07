@@ -227,6 +227,16 @@ export const PLANTILLAS = {
     filas: [['Fecha', d.fecha], ...(d.franjas ? [['Llegadas', d.franjas] as [string, string]] : []), ['Vehículos', d.vehiculos]],
     boton: { texto: 'Aceptar el día', url: d.enlace },
   }),
+  OFERTA_RECHAZADA: (d: D): ContenidoEmail => ({
+    asunto: `${d.cliente} ha rechazado el ${d.fecha} (${d.codigo})`,
+    previo: 'La reserva vuelve a estar en espera.',
+    tono: 'aviso',
+    etiqueta: 'Por asignar',
+    titulo: 'Oferta de hueco rechazada',
+    parrafos: [`${d.cliente} no puede el día ofrecido. La reserva sigue viva y vuelve a la lista de espera: ofrece otro día.`],
+    filas: [['Solicitud', d.codigo], ['Día rechazado', d.fecha], ['Vehículos', d.vehiculos]],
+    boton: { texto: 'Ofrecer otro día', url: d.enlace },
+  }),
   RESERVA_MULTIPLE_CONFIRMADA: (d: D): ContenidoEmail => ({
     asunto: `Citas confirmadas el ${d.fecha} para ${d.numVehiculos} vehículos`,
     previo: 'Ya tienes las citas.',

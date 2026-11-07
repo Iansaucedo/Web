@@ -67,6 +67,7 @@ export const datosEjemplo: Record<NombrePlantilla, Record<string, unknown>> = {
   RESERVA_MULTIPLE_RECIBIDA: { nombre: 'Flotas SL', numVehiculos: 3, vehiculos: '1234 KLM, 5678 MNP, 9012 RST', fechas: '16, 17 y 18 de noviembre', enlace: `${web}/reservas` },
   RESERVA_MULTIPLE_NUEVA: { nombre: 'Marta', cliente: 'Flotas SL', numVehiculos: 3, vehiculos: '1234 KLM, 5678 MNP, 9012 RST', fechas: '16, 17 y 18 de noviembre', enlace: `${web}/jefe/citas` },
   HUECO_OFRECIDO: { nombre: 'Flotas SL', fecha: 'martes, 17 de noviembre', franjas: '09:00, 09:30 y 10:00', numVehiculos: 3, vehiculos: '1234 KLM, 5678 MNP, 9012 RST', enlace: `${web}/reservas` },
+  OFERTA_RECHAZADA: { nombre: 'Marta', cliente: 'Flotas SL', codigo: 'RM-07', fecha: 'martes, 17 de noviembre', numVehiculos: 3, vehiculos: '1234 KLM, 5678 MNP, 9012 RST', enlace: `${web}/jefe/empresas` },
   RESERVA_MULTIPLE_CONFIRMADA: {
     nombre: 'Flotas SL',
     fecha: 'martes, 17 de noviembre',

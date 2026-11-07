@@ -120,6 +120,8 @@ test('Jornada: entrada, pausa, salida y corrección aceptada por el jefe', async
   await fijarHora(page, '2026-11-09T09:45:00.000Z');
   await page.reload();
   await tarjeta.getByRole('button', { name: 'Volver de la pausa' }).click();
+  // Esperar a que la pausa se registre antes de mover el reloj y recargar: si no, la recarga cancela la petición.
+  await expect(tarjeta.getByRole('button', { name: 'Empezar pausa' })).toBeVisible();
   await fijarHora(page, '2026-11-09T15:00:00.000Z');
   await page.reload();
   await tarjeta.getByRole('button', { name: 'Fichar salida' }).click();
@@ -234,6 +236,29 @@ test('Reserva múltiple: la empresa acepta por teléfono y el jefe pulsa «Confi
   await expect(page.getByTestId('reserva-ofrecida')).toHaveCount(0);
   await expect(page.getByText('Convertidas este mes')).toBeVisible();
   expect(await emails(request, 'flota@empresa.test')).toContain('RESERVA_MULTIPLE_CONFIRMADA');
+});
+
+test('Reserva múltiple: la empresa rechaza el hueco sin cancelar y el jefe vuelve a verla en espera', async ({ page, request }) => {
+  await clienteListo(page, 'flota@empresa.test', '1111AAA', true);
+  const otro = await (await page.request.post('/api/vehiculos', { data: { matricula: '2222BBB', marca: 'Ford', modelo: 'Transit' } })).json();
+  const primero = (await (await page.request.get('/api/vehiculos')).json()).datos.find((v: { matricula: string }) => v.matricula === '1111AAA');
+  const r = await (await page.request.post('/api/reservas-multiples', { data: { vehiculoIds: [primero.id, otro.id], fechasPreferidas: ['2026-11-11', '2026-11-12'] } })).json();
+
+  await entrarComo(page, 'jefe@taller.test');
+  await page.request.post(`/api/reservas-multiples/${r.id}/ofrecer`, { data: { fecha: '2026-11-11', franjas: ['09:00', '09:30'] } });
+
+  await entrarComo(page, 'flota@empresa.test');
+  await page.goto('/reservas');
+  await page.getByRole('button', { name: 'Rechazar' }).click();
+  await expect(page.getByText('Día rechazado')).toBeVisible();
+  await expect(page.getByTestId('reserva')).toContainText('En espera');
+  await expect(page.getByRole('button', { name: 'Aceptar el día' })).toHaveCount(0);
+  expect(await emails(request, 'jefe@taller.test')).toContain('OFERTA_RECHAZADA');
+
+  await entrarComo(page, 'jefe@taller.test');
+  await page.goto('/jefe/empresas');
+  await expect(page.getByTestId('reserva')).toContainText('RM-01');
+  await expect(page.getByTestId('reserva-ofrecida')).toHaveCount(0);
 });
 
 test('Supervisión: el dueño cambia el IVA, ve estadísticas y la trazabilidad', async ({ page }) => {

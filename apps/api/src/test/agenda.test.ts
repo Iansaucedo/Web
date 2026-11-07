@@ -381,6 +381,35 @@ describe('reserva múltiple (empresas)', () => {
     expect(await prisma.cita.count()).toBe(3);
   });
 
+  it('rechazar la oferta devuelve la reserva a espera, avisa al jefe y permite ofrecer otro día', async () => {
+    const { jefe, emp, ids } = await flota();
+    const r = (await emp.post('/api/reservas-multiples').send({ vehiculoIds: ids, fechasPreferidas: [PASADO, '2026-11-12'] })).body;
+    await jefe.post(`/api/reservas-multiples/${r.id}/ofrecer`).send({ fecha: PASADO, franjas: ['09:00', '09:30', '10:00'] });
+    const x = await emp.post(`/api/reservas-multiples/${r.id}/rechazar-oferta`).send({});
+    expect(x.status).toBe(200);
+    expect(x.body).toMatchObject({ estado: 'EN_ESPERA', fechaOfrecida: null, franjasOfrecidas: [], codigo: 'RM-01' });
+    expect(await prisma.cita.count()).toBe(0);
+    const aviso = (await emailsA('jefe@taller.test')).find((e) => e.plantilla === 'OFERTA_RECHAZADA');
+    expect(aviso?.datos).toMatchObject({ cliente: 'Flotas SL', codigo: 'RM-01' });
+    // Ya no hay nada que aceptar ni rechazar…
+    expect((await emp.post(`/api/reservas-multiples/${r.id}/aceptar`).send({})).body.codigo).toBe('SIN_OFERTA');
+    expect((await emp.post(`/api/reservas-multiples/${r.id}/rechazar-oferta`).send({})).body.codigo).toBe('SIN_OFERTA');
+    // …pero el jefe puede ofrecer otro día y la empresa aceptarlo
+    expect((await jefe.post(`/api/reservas-multiples/${r.id}/ofrecer`).send({ fecha: '2026-11-12', franjas: ['09:00', '09:30', '10:00'] })).body.estado).toBe('HUECO_OFRECIDO');
+    expect((await emp.post(`/api/reservas-multiples/${r.id}/aceptar`).send({})).body.estado).toBe('CONVERTIDA');
+  });
+
+  it('rechazar la oferta: sin oferta, ajena o siendo personal no se puede', async () => {
+    const { jefe, emp, ids } = await flota();
+    const r = (await emp.post('/api/reservas-multiples').send({ vehiculoIds: ids, fechasPreferidas: [PASADO] })).body;
+    expect((await emp.post(`/api/reservas-multiples/${r.id}/rechazar-oferta`).send({})).status).toBe(409); // todavía EN_ESPERA
+    await jefe.post(`/api/reservas-multiples/${r.id}/ofrecer`).send({ fecha: PASADO, franjas: ['09:00', '09:30', '10:00'] });
+    expect((await jefe.post(`/api/reservas-multiples/${r.id}/rechazar-oferta`).send({})).status).toBe(403);
+    const otra = await entrar('otra@empresa.test', 'CLIENTE', { empresa: true });
+    expect((await otra.post(`/api/reservas-multiples/${r.id}/rechazar-oferta`).send({})).status).toBe(404);
+    expect((await emp.get('/api/reservas-multiples')).body.datos[0].estado).toBe('HUECO_OFRECIDO');
+  });
+
   /** Capacidad 6: así lo que se llena es la franja, no el día. */
   async function tallerGrande() {
     await prisma.puesto.createMany({ data: [{ nombre: 'Puesto 4' }, { nombre: 'Puesto 5' }, { nombre: 'Puesto 6' }] });
