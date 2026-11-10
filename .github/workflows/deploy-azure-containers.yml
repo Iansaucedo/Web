@@ -22,6 +22,9 @@ jobs:
   build-and-deploy-containers:
     if: github.repository == 'Iansaucedo/Web'
     runs-on: ubuntu-latest
+    env:
+      AZURE_API_PROFILE: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
+      AZURE_WEB_PROFILE: ${{ secrets.AZURE_WEB_PUBLISH_PROFILE }}
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
@@ -61,7 +64,7 @@ jobs:
 
       # Despliegue a Azure Web App Container para API si hay perfil
       - name: Desplegar contenedor API en Azure
-        if: "${{ inputs.deploy_api && secrets.AZURE_API_PUBLISH_PROFILE != '' }}"
+        if: ${{ inputs.deploy_api && env.AZURE_API_PROFILE != '' }}
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZURE_API_APP_NAME || 'taller-api' }}
@@ -70,7 +73,7 @@ jobs:
 
       # Despliegue a Azure Web App Container para Web si hay perfil
       - name: Desplegar contenedor Web en Azure
-        if: "${{ inputs.deploy_web && secrets.AZURE_WEB_PUBLISH_PROFILE != '' }}"
+        if: ${{ inputs.deploy_web && env.AZURE_WEB_PROFILE != '' }}
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZURE_WEB_APP_NAME || 'taller-web' }}

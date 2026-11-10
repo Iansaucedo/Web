@@ -89,20 +89,31 @@ jobs:
     name: Migrar Base de Datos Azure
     needs: build
     runs-on: ubuntu-latest
-    if: "${{ secrets.DATABASE_URL != '' }}"
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
+      # `secrets` no se puede usar en `if`; se comprueba vía env
+      - name: Comprobar DATABASE_URL
+        id: check
+        run: |
+          if [ -n "$DATABASE_URL" ]; then echo "has_db=true" >> "$GITHUB_OUTPUT"; else echo "::notice::DATABASE_URL no configurada; se omiten migraciones"; fi
+
       - name: Checkout del repositorio
+        if: steps.check.outputs.has_db == 'true'
         uses: actions/checkout@v4
 
       - name: Configurar Node.js ${{ env.NODE_VERSION }}
+        if: steps.check.outputs.has_db == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Instalar Prisma CLI
+        if: steps.check.outputs.has_db == 'true'
         run: npm install -g prisma@5.22.0
 
       - name: Ejecutar migraciones en Azure PostgreSQL
+        if: steps.check.outputs.has_db == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: prisma migrate deploy
