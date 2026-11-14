@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { conflicto, ErrorApp } from '../lib/errores';
+import { reloj } from '../lib/reloj';
+import { log } from '../lib/log';
 
 /**
  * Ejecuta `fn` como mucho una vez por (usuario, Idempotency-Key).
@@ -21,7 +23,7 @@ export async function conIdempotencia(req: Request, res: Response, usuarioId: st
   const ruta = req.originalUrl.split('?')[0];
   let id: string;
   try {
-    ({ id } = await prisma.claveIdempotencia.create({ data: { usuarioId, clave, metodo: req.method, ruta, hashCuerpo } }));
+    ({ id } = await prisma.claveIdempotencia.create({ data: { usuarioId, clave, metodo: req.method, ruta, hashCuerpo, creadaEn: reloj.ahora() } }));
   } catch (e) {
     if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
     const previa = await prisma.claveIdempotencia.findUnique({ where: { usuarioId_clave: { usuarioId, clave } } });
@@ -42,4 +44,20 @@ export async function conIdempotencia(req: Request, res: Response, usuarioId: st
     await prisma.claveIdempotencia.delete({ where: { id } }).catch(() => undefined);
     throw e;
   }
+}
+
+/** Las claves solo sirven para reintentos cercanos: pasados unos días se borran para que la tabla no crezca sin fin. */
+export const DIAS_CLAVE_IDEMPOTENCIA = 7;
+
+export async function limpiarClavesIdempotencia(): Promise<number> {
+  const limite = new Date(reloj.ahora().getTime() - DIAS_CLAVE_IDEMPOTENCIA * 86_400_000);
+  const { count } = await prisma.claveIdempotencia.deleteMany({ where: { creadaEn: { lt: limite } } });
+  if (count) log('info', 'claves de idempotencia caducadas borradas', { n: count });
+  return count;
+}
+
+/** Revisa cada hora. Devuelve una función para pararlo. */
+export function arrancarLimpiezaIdempotencia(cadaMs = 3_600_000) {
+  const t = setInterval(() => void limpiarClavesIdempotencia().catch((e) => log('error', 'fallo limpiando claves de idempotencia', { error: String(e) })), cadaMs);
+  return () => clearInterval(t);
 }

@@ -3,6 +3,7 @@ import { arrancarCorreo } from './emails/cola';
 import { arrancarDesvinculacion } from './servicios/bajas';
 import { arrancarLimpiezaFotos } from './servicios/fotos';
 import { arrancarRecordatorios } from './servicios/recordatorios';
+import { arrancarLimpiezaIdempotencia } from './middleware/idempotencia';
 import { log } from './lib/log';
 
 process.on('uncaughtException', (error) => {
@@ -30,6 +31,7 @@ const pararCorreo = arrancarCorreo();
 const pararBajas = arrancarDesvinculacion();
 const pararFotos = arrancarLimpiezaFotos();
 const pararRecordatorios = arrancarRecordatorios();
+const pararIdempotencia = arrancarLimpiezaIdempotencia();
 
 // Cierre ordenado: deja terminar las peticiones en curso antes de salir.
 for (const senal of ['SIGTERM', 'SIGINT'] as const) {
@@ -38,6 +40,7 @@ for (const senal of ['SIGTERM', 'SIGINT'] as const) {
     pararBajas();
     pararFotos();
     pararRecordatorios();
+    pararIdempotencia();
     servidor.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10_000).unref();
   });
