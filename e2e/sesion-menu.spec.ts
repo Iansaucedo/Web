@@ -6,6 +6,27 @@ test.beforeEach(async ({ page, request }) => {
   await fijarHora(page, LUNES_7);
 });
 
+test('escritorio estrecho (< 900 px): el menú plegable se cierra y no reaparece al ensanchar y volver a estrechar', async ({ page }) => {
+  await page.setViewportSize({ width: 850, height: 800 });
+  await entrarComo(page, 'jefe@taller.test');
+  await page.goto('/jefe');
+  const abrir = page.getByRole('button', { name: 'Abrir menú' });
+  const menu = page.getByRole('navigation', { name: 'Menú principal' });
+  await abrir.click();
+  await expect(menu).toBeVisible();
+  await page.mouse.click(700, 400);
+  await expect(menu).toBeHidden();
+  // Abierto y luego a escritorio: el menú fijo se ve y la hamburguesa desaparece.
+  await abrir.click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(abrir).toBeHidden();
+  await expect(menu).toBeVisible();
+  // De vuelta a estrecho: el menú no reaparece abierto solo.
+  await page.setViewportSize({ width: 850, height: 800 });
+  await expect(menu).toBeHidden();
+  await expect(abrir).toBeVisible();
+});
+
 test('una cookie de sesión que ya no vale lleva al login una sola vez (antes, bucle /login ↔ /)', async ({ page, context }) => {
   await context.addCookies([{ name: 'taller_sesion', value: 'token.que-ya-no.vale', url: 'http://localhost:3100' }]);
   let peticiones = 0;
