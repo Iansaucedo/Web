@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { log } from '../lib/log';
+import { log, ocultarEmail } from '../lib/log';
 
 export interface Mensaje {
   para: string;
@@ -72,7 +72,7 @@ export function transporteSmtp(): Transporte {
         });
       } catch (error) {
         log('error', 'Error al enviar email vía SMTP', {
-          para: m.para,
+          para: ocultarEmail(m.para),
           asunto: m.asunto,
           error: (error as Error).message,
         });
