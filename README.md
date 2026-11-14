@@ -85,6 +85,7 @@ Bases de datos necesarias: `taller_test` y `taller_e2e` (usuario `taller`), con 
   Si el SMTP cae, no se pierde ninguno.
 - **Seguridad:** el rol se lee de la base de datos en cada petición (dar de baja corta la sesión al momento);
   un recurso ajeno da 404; las peticiones con cuerpo exigen JSON (CSRF); query estricta; límite de 100 KB; nunca se devuelven trazas.
+  Detalle, riesgos aceptados y cómo informar de una vulnerabilidad: [`SECURITY.md`](SECURITY.md).
 - **Tareas periódicas:** envío de emails, recordatorio 24 h antes (cada 15 min), limpieza de fotos sin adjuntar y desvinculación de autobajas.
   Todas son idempotentes y seguras con varias instancias.
 - **Fotos:** `POST /api/fotos` con la imagen tal cual (JPEG, PNG o WebP, ≤ 5 MB); el formato se comprueba por los bytes.
