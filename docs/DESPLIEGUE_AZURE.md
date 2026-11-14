@@ -148,7 +148,21 @@ Ve a cada Web App en Azure Portal > **Configuración / Variables de entorno** (*
 | `SMTP_USER` | `apikey` | Usuario SMTP |
 | `SMTP_PASS` | `...` | Contraseña o API Key SMTP |
 | `SMTP_FROM` | `TallerPro <no-responder@taller.es>` | Remitente de los 31 correos |
+| `NODE_ENV` | `production` | Cookie de sesión `Secure`, Swagger oculto. Con `test` se activa el modo de pruebas |
+| `TRUST_PROXY` | `2` | Proxies delante de Express: `2` con Web y API en App Services distintos (frontal de Azure + Next); `1` con la imagen única o en local. Sin el valor correcto, el límite de peticiones lo comparten todos los usuarios |
+| `API_DOCS` | `true` *(opcional)* | Publica `/api/docs` (Swagger) también en producción |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` | La compilación la realiza GitHub Actions |
+
+### Restringir el acceso directo a la API (necesario con `TRUST_PROXY=2`)
+
+La API solo debe recibir tráfico de la web (Next), nunca directamente de internet. Si se puede llamar a `taller-api.azurewebsites.net` desde fuera, cualquiera puede enviar su propia cabecera `X-Forwarded-For` y saltarse el límite de peticiones por IP.
+
+En Azure Portal, abre `taller-api` → **Redes** → **Restricciones de acceso** (*Access restrictions*):
+1. Acceso público: **Habilitado solo desde redes virtuales y direcciones IP seleccionadas**, acción por defecto **Denegar**.
+2. Añade una regla **Permitir** con las *Direcciones IP de salida* de `taller-web` (en `taller-web` → **Propiedades** → *Outbound IP addresses*), o con su red virtual si usas integración con VNet.
+3. Comprueba que `https://taller-api.azurewebsites.net/api/health` desde tu navegador da **403**, y que la web sigue funcionando.
+
+Con la imagen única (`Dockerfile` de la raíz) la API solo escucha dentro del contenedor y esto no hace falta.
 
 ### En `taller-web` (Frontend Next.js):
 | Nombre | Valor de Ejemplo | Descripción |

@@ -12,9 +12,22 @@ export function reiniciarLimites() {
   ventanas.clear();
 }
 
+/**
+ * IP del cliente sin puerto. El frontal de Azure escribe X-Forwarded-For como «1.2.3.4:56789»:
+ * con el puerto, cada conexión tendría su propio contador y el límite no serviría de nada.
+ */
+export function ipSinPuerto(ip: string | undefined): string {
+  if (!ip) return 'desconocida';
+  const v6 = /^\[([^\]]+)\](?::\d+)?$/.exec(ip);
+  if (v6) return v6[1];
+  const v4 = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(ip);
+  if (v4) return v4[1];
+  return ip.replace(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/, '$1');
+}
+
 export function limitar(nombre: string, maximo: number, ventanaMs = 60_000): RequestHandler {
   return (req, res, next) => {
-    const clave = `${nombre}:${req.ip}`;
+    const clave = `${nombre}:${ipSinPuerto(req.ip)}`;
     const ahora = Date.now();
     let v = ventanas.get(clave);
     if (!v || ahora - v.inicio >= ventanaMs) {
