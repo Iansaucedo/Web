@@ -118,12 +118,15 @@ const datosEmail = (x: CitaBd, zona: string) => ({
   problema: x.descripcionProblema,
 });
 
-/** Reserva plaza en una franja dentro de la transacción, bloqueando el día. Lanza si no cabe. */
-export async function ocuparFranja(tx: Tx, inicio: Date, cuantos = 1) {
+/**
+ * Reserva plaza en una franja dentro de la transacción, bloqueando el día. Lanza si no cabe.
+ * `exceptoCitaId`: al cambiar una cita de hora, su plaza actual no cuenta como ocupada.
+ */
+export async function ocuparFranja(tx: Tx, inicio: Date, cuantos = 1, exceptoCitaId?: string) {
   const c = await obtenerConfig(tx);
   const { dia, franja } = validarFranja(inicio, c);
   await bloquear(tx, `citas:${dia}`);
-  const o = await ocupacionDia(tx, dia, c);
+  const o = await ocupacionDia(tx, dia, c, exceptoCitaId);
   if (o.ocupadas + cuantos > o.capacidad) throw conflicto('DIA_LLENO', 'Ese día ya no queda sitio en el taller');
   if (libresEnFranja(o, inicio, c) < cuantos) throw conflicto('FRANJA_LLENA', 'La franja elegida ya está completa. Elige otra hora');
   return { dia, franja, config: c };
@@ -237,9 +240,10 @@ definir({
     exigirAntelacion(previa.inicio, c.horasMinimasCancelar);
     const inicio = new Date(cuerpo.inicio);
     await transaccion(async (tx) => {
-      // Cerrojo del día anterior también: así no compite con otra operación sobre la misma cita.
+      // Cerrojo de la cita: no compite con otra operación sobre ella. La plaza que deja no cuenta como ocupada
+      // (si no, cambiar de hora dentro de un día lleno fallaría aunque la ocupación no cambie).
       await bloquear(tx, `cita:${previa.id}`);
-      const { franja } = await ocuparFranja(tx, inicio);
+      const { franja } = await ocuparFranja(tx, inicio, 1, previa.id);
       const r = await tx.cita.updateMany({ where: { id: previa.id, estado: { in: ['PENDIENTE', 'CONFIRMADA'] } }, data: { inicio: franja.inicio, fin: franja.fin, estado: 'PENDIENTE', recordatorioEn: null } });
       if (!r.count) throw conflicto('CITA_NO_ACTIVA', 'La cita ya no se puede cambiar');
       const actual = await tx.cita.findUniqueOrThrow({ where: { id: previa.id }, include: incluir });

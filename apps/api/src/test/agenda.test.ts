@@ -176,6 +176,22 @@ describe('cambiar y cancelar', () => {
     expect((await emailsA('ana@cliente.test')).map((e) => e.plantilla)).toContain('CITA_MODIFICADA');
   });
 
+  it('QA: en un día lleno, la cita se puede mover a otra hora del mismo día (su plaza no cuenta dos veces)', async () => {
+    await tallerAbierto(1); // capacidad 2
+    const ana = await clienteConCoche();
+    const cita = (await reservar(ana, PASADO, '09:00')).body;
+    await reservar(await clienteConCoche('luis@cliente.test', '9999XYZ'), PASADO, '10:00');
+    expect((await ana.get(`/api/disponibilidad?desde=${PASADO}&hasta=${PASADO}`)).body.dias[0].lleno).toBe(true);
+    const r = await ana.patch(`/api/citas/${cita.id}`).send({ inicio: madrid(PASADO, '11:00') });
+    expect(r.status).toBe(200);
+    expect(r.body.inicio).toBe(madrid(PASADO, '11:00'));
+    // A otro día lleno no: ahí sí ocuparía una plaza nueva.
+    const otra = await clienteConCoche('eva@cliente.test', '5555EEE');
+    expect((await reservar(otra, '2026-11-12', '09:00')).status).toBe(201);
+    expect((await reservar(await clienteConCoche('leo@cliente.test', '6666FFF'), '2026-11-12', '09:30')).status).toBe(201);
+    expect((await ana.patch(`/api/citas/${cita.id}`).send({ inicio: madrid('2026-11-12', '11:00') })).body.codigo).toBe('DIA_LLENO');
+  });
+
   it('con menos de 24 h el cliente no puede cambiar ni cancelar', async () => {
     await tallerAbierto(1);
     const ana = await clienteConCoche();
