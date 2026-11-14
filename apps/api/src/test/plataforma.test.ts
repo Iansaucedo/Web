@@ -111,6 +111,14 @@ describe('seguridad de la sesión', () => {
     expect((await anonimo().post('/api/auth/test-login').send({ email: 'ana@cliente.test' })).status).toBe(200);
   });
 
+  it('un 401 con una cookie de sesión que ya no vale la borra (si no, la web entraba en un bucle /login ↔ /)', async () => {
+    const r = await anonimo().get('/api/auth/me').set('Cookie', 'taller_sesion=token.que-ya-no.vale');
+    expect(r.status).toBe(401);
+    expect(([] as string[]).concat(r.headers['set-cookie'] ?? []).join(' ')).toMatch(/taller_sesion=;.*Expires=Thu, 01 Jan 1970/);
+    // Sin cookie no hay nada que borrar.
+    expect((await anonimo().get('/api/auth/me')).headers['set-cookie']).toBeUndefined();
+  });
+
   it('en producción, sin JWT_SECRET o con uno corto, la API no arranca', async () => {
     const { comprobarSecretoSesion } = await import('../middleware/auth');
     const antes = { entorno: process.env.NODE_ENV, secreto: process.env.JWT_SECRET };

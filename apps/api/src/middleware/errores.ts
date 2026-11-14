@@ -5,6 +5,7 @@ import { ErrorApp } from '../lib/errores';
 import { esRutaBinaria } from '../lib/ruta';
 import { log } from '../lib/log';
 import { TransicionInvalida } from '../domain/estadoOrden';
+import { borrarCookieSesion, COOKIE_SESION } from './auth';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -59,5 +60,8 @@ export const manejarErrores: ErrorRequestHandler = (e, req, res, _next) => {
     error = new ErrorApp(500, 'ERROR_INTERNO', 'Algo ha fallado. Inténtalo de nuevo en unos minutos');
   }
   if (res.headersSent) return;
+  // Sesión que ya no vale (caducada, cerrada en otro dispositivo, cuenta de baja, secreto cambiado): se borra la
+  // cookie. Si no, la web la seguiría viendo, el middleware de Next mandaría de /login a / y volvería a fallar: bucle.
+  if (error.estado === 401 && req.cookies?.[COOKIE_SESION]) borrarCookieSesion(res);
   res.status(error.estado).json({ error: error.message, codigo: error.codigo, detalles: error.detalles, requestId: req.id });
 };
