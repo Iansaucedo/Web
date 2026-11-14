@@ -388,6 +388,24 @@ describe('reserva múltiple (empresas)', () => {
     expect(await prisma.cita.count({ where: { reservaMultipleId: r.id } })).toBe(0);
   });
 
+  it('QA: si un vehículo cogió cita por su cuenta, aceptar da 409 y no crea ninguna cita', async () => {
+    const { jefe, emp, ids } = await flota();
+    const r = (await emp.post('/api/reservas-multiples').send({ vehiculoIds: ids, fechasPreferidas: [PASADO] })).body;
+    await jefe.post(`/api/reservas-multiples/${r.id}/ofrecer`).send({ fecha: PASADO, franjas: ['08:00', '08:30', '09:00'] });
+    expect((await emp.post('/api/citas').send({ vehiculoId: ids[1], inicio: madrid('2026-11-12', '09:00'), descripcionProblema: 'ITV' })).status).toBe(201);
+    const a = await emp.post(`/api/reservas-multiples/${r.id}/aceptar`).send({});
+    expect(a.status).toBe(409);
+    expect(a.body.codigo).toBe('VEHICULO_CON_CITA');
+    expect(a.body.error).toContain('2222BBB');
+    expect(await prisma.cita.count({ where: { reservaMultipleId: r.id } })).toBe(0);
+  });
+
+  it('QA: un vehículo dado de baja no entra en una reserva múltiple', async () => {
+    const { emp, ids } = await flota();
+    await prisma.vehiculo.update({ where: { id: ids[2] }, data: { eliminadoEn: new Date() } });
+    expect((await emp.post('/api/reservas-multiples').send({ vehiculoIds: ids, fechasPreferidas: [PASADO] })).status).toBe(404);
+  });
+
   it('aceptar dos veces no duplica citas', async () => {
     const { jefe, emp, ids } = await flota();
     const r = (await emp.post('/api/reservas-multiples').send({ vehiculoIds: ids, fechasPreferidas: [PASADO] })).body;

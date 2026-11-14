@@ -3,7 +3,8 @@ import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
 import { bloquear, transaccion } from '../lib/transaccion';
-import { conflicto, noEncontrado, reglaNegocio } from '../lib/errores';
+import { conflicto, ErrorApp, noEncontrado, reglaNegocio } from '../lib/errores';
+import { vehiculoSinCitaActiva } from './citas';
 import { reloj } from '../lib/reloj';
 import { diaDeFechaDb, diaLocal, fechaDb } from '../lib/fechas';
 import { clienteDe, esPersonal, GESTION } from '../servicios/acceso';
@@ -81,7 +82,7 @@ definir({
   respuesta: lista(ReservaSchema),
   manejador: async ({ usuario, query }) => {
     const where: Prisma.ReservaMultipleWhereInput = { ...(esPersonal(usuario) ? {} : { cliente: { usuarioId: usuario.id } }), ...(query.estado ? { estado: query.estado } : {}) };
-    return { datos: (await prisma.reservaMultiple.findMany({ where, include: incluir, orderBy: { creadaEn: 'desc' } })).map(aReserva) };
+    return { datos: (await prisma.reservaMultiple.findMany({ where, include: incluir, orderBy: { creadaEn: 'desc' }, take: 300 })).map(aReserva) };
   },
 });
 
@@ -109,10 +110,13 @@ definir({
     const hoy = diaLocal(reloj.ahora(), c.zonaHoraria);
     const malas = cuerpo.fechasPreferidas.filter((d) => d <= hoy || !esLaborable(d, c));
     if (malas.length) throw reglaNegocio('FECHA_NO_VALIDA', `Estas fechas no son días laborables futuros: ${malas.join(', ')}`);
-    const vehiculos = await prisma.vehiculo.findMany({ where: { id: { in: cuerpo.vehiculoIds }, clienteId: cliente.id } });
+    // Un vehículo dado de baja ya no existe para su cliente.
+    const vehiculos = await prisma.vehiculo.findMany({ where: { id: { in: cuerpo.vehiculoIds }, clienteId: cliente.id, eliminadoEn: null } });
     if (vehiculos.length !== cuerpo.vehiculoIds.length) throw noEncontrado('Alguno de los vehículos');
     const ocupado = await prisma.cita.findFirst({ where: { vehiculoId: { in: cuerpo.vehiculoIds }, estado: { in: ['PENDIENTE', 'CONFIRMADA'] } }, include: { vehiculo: true } });
     if (ocupado) throw conflicto('VEHICULO_CON_CITA', `${ocupado.vehiculo.matricula} ya tiene una cita`);
+    const enTaller = await prisma.orden.findFirst({ where: { vehiculoId: { in: cuerpo.vehiculoIds }, estado: { not: 'ENTREGADA' } }, include: { vehiculo: true } });
+    if (enTaller) throw conflicto('VEHICULO_CON_CITA', `${enTaller.vehiculo.matricula} está ahora en el taller`);
 
     const id = await transaccion(async (tx) => {
       const r = await tx.reservaMultiple.create({
@@ -202,6 +206,18 @@ definir({
       await bloquear(tx, `reserva:${r.id}`);
       const actual = await tx.reservaMultiple.findUniqueOrThrow({ where: { id: r.id } });
       if (actual.estado !== 'HUECO_OFRECIDO' || !actual.fechaOfrecida) throw conflicto('SIN_OFERTA', 'No hay ningún día ofrecido para aceptar');
+      // Desde que se pidió la reserva, alguno de los vehículos ha podido coger cita por su cuenta o entrar al taller.
+      // Los vehículos se bloquean antes que el día, en el mismo orden que POST /citas (vehículo → día): sin interbloqueos.
+      for (const { vehiculo } of r.vehiculos) {
+        try {
+          await vehiculoSinCitaActiva(tx, vehiculo.id);
+        } catch (e) {
+          if (e instanceof ErrorApp && e.codigo === 'VEHICULO_CON_CITA') {
+            throw conflicto('VEHICULO_CON_CITA', `${vehiculo.matricula} ya tiene una cita o está en el taller. Cancela esa cita o quita el vehículo de la reserva`);
+          }
+          throw e;
+        }
+      }
       const dia = diaDeFechaDb(actual.fechaOfrecida);
       await bloquear(tx, `citas:${dia}`);
       const c = await obtenerConfig(tx);
@@ -219,7 +235,9 @@ definir({
           }),
         );
       }
-      await tx.reservaMultiple.update({ where: { id: r.id }, data: { estado: 'CONVERTIDA', convertidaEn: reloj.ahora() } });
+      // Condicionado al estado: si otra operación (una baja de la cuenta) la canceló a la vez, se deshace todo.
+      const convertida = await tx.reservaMultiple.updateMany({ where: { id: r.id, estado: 'HUECO_OFRECIDO' }, data: { estado: 'CONVERTIDA', convertidaEn: reloj.ahora() } });
+      if (!convertida.count) throw conflicto('RESERVA_CERRADA', 'La reserva ha cambiado mientras tanto. Vuelve a cargarla');
       await avisar(tx, r.cliente.usuarioId, {
         tipo: 'RESERVA_MULTIPLE_CONFIRMADA',
         mensaje: `Citas confirmadas el ${diaLargo(dia)} para ${citas.length} vehículos`,
@@ -281,8 +299,12 @@ definir({
   errores: { 404: 'No existe o no es tuya', 409: 'Ya convertida o cancelada' },
   manejador: async ({ usuario, params }) => {
     const r = await reservaAccesible(usuario, params.id);
-    const n = await prisma.reservaMultiple.updateMany({ where: { id: r.id, estado: { in: ['EN_ESPERA', 'HUECO_OFRECIDO'] } }, data: { estado: 'CANCELADA' } });
-    if (!n.count) throw conflicto('RESERVA_CERRADA', 'La reserva ya está convertida o cancelada');
+    // Mismo cerrojo que «aceptar»: no se puede cancelar mientras se está convirtiendo en citas.
+    await transaccion(async (tx) => {
+      await bloquear(tx, `reserva:${r.id}`);
+      const n = await tx.reservaMultiple.updateMany({ where: { id: r.id, estado: { in: ['EN_ESPERA', 'HUECO_OFRECIDO'] } }, data: { estado: 'CANCELADA' } });
+      if (!n.count) throw conflicto('RESERVA_CERRADA', 'La reserva ya está convertida o cancelada');
+    });
     return aReserva(await prisma.reservaMultiple.findUniqueOrThrow({ where: { id: r.id }, include: incluir }));
   },
 });

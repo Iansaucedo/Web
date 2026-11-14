@@ -132,7 +132,7 @@ export async function ocuparFranja(tx: Tx, inicio: Date, cuantos = 1, exceptoCit
   return { dia, franja, config: c };
 }
 
-async function vehiculoSinCitaActiva(tx: Tx, vehiculoId: string, excepto?: string) {
+export async function vehiculoSinCitaActiva(tx: Tx, vehiculoId: string, excepto?: string) {
   await bloquear(tx, `vehiculo:${vehiculoId}`);
   const activa = await tx.cita.findFirst({ where: { vehiculoId, estado: { in: ['PENDIENTE', 'CONFIRMADA'] }, NOT: { id: excepto } } });
   const abierta = await tx.orden.findFirst({ where: { vehiculoId, estado: { not: 'ENTREGADA' } } });
