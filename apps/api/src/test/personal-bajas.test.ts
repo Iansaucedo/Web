@@ -81,6 +81,23 @@ describe('baja de personal', () => {
     expect((await anonimo().post('/api/auth/test-login').send({ email: 'mec1@taller.test' })).status).toBe(200);
   });
 
+  it('lo que da de baja el dueño solo lo reactiva el dueño', async () => {
+    const [mec] = await tallerAbierto(1);
+    const jefe = await entrar('jefe@taller.test', 'JEFE');
+    const dueno = await entrar('dueno@taller.test', 'DUENO');
+    await dueno.post(`/api/empleados/${mec.empleadoId}/baja`).send({ motivo: 'Despido' });
+    expect((await jefe.post(`/api/empleados/${mec.empleadoId}/reactivar`).send({})).status).toBe(403);
+    expect((await dueno.post(`/api/empleados/${mec.empleadoId}/reactivar`).send({})).status).toBe(200);
+  });
+
+  it('QA: el jefe no gestiona a un ex mecánico que ahora es cliente (su fila de empleado antigua no cuenta)', async () => {
+    const [mec] = await tallerAbierto(1);
+    const jefe = await entrar('jefe@taller.test', 'JEFE');
+    await prisma.usuario.update({ where: { id: mec.usuarioId }, data: { rol: 'CLIENTE' } });
+    expect((await jefe.post(`/api/empleados/${mec.empleadoId}/baja`).send({ motivo: 'x' })).status).toBe(404);
+    expect((await prisma.usuario.findUniqueOrThrow({ where: { id: mec.usuarioId } })).activo).toBe(true);
+  });
+
   it('un mecánico no puede dar de baja a nadie', async () => {
     const [m1, m2] = await tallerAbierto(2);
     expect((await m1.post(`/api/empleados/${m2.empleadoId}/baja`).send({ motivo: 'x' })).status).toBe(403);

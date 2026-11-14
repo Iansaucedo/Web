@@ -35,7 +35,7 @@ const TIPOS: Record<TipoAusencia, { texto: string; tono: 'info' | 'aviso' | 'err
   PERSONAL: { texto: 'Asuntos propios', tono: 'aviso' },
   OTRA: { texto: 'Ausencia', tono: 'neutro' },
 };
-interface Invitacion { id: string; email: string; rol: string; creadaPor: string; usadaEn: string | null }
+interface Invitacion { id: string; email: string; rol: string; creadaPor: string; usadaEn: string | null; caducada: boolean }
 
 export default function Personal() {
   const { usuario } = useSesion();
@@ -168,7 +168,7 @@ export default function Personal() {
                         <TableRow key={x.id}>
                           <TableCell>{x.email}</TableCell>
                           <TableCell>{x.rol === 'JEFE' ? 'Jefe de taller' : 'Mecánico'}</TableCell>
-                          <TableCell>{x.usadaEn ? <ChipEstado tono="exito" texto="Ya ha entrado" /> : <ChipEstado tono="aviso" texto="Pendiente" />}</TableCell>
+                          <TableCell>{x.usadaEn ? <ChipEstado tono="exito" texto="Ya ha entrado" /> : x.caducada ? <ChipEstado tono="error" texto="Caducada: vuelve a invitar" /> : <ChipEstado tono="aviso" texto="Pendiente" />}</TableCell>
                           <TableCell align="right">{!x.usadaEn && <Button size="small" color="error" onClick={async () => { await acc.ejecutar(() => api.delete(`/invitaciones/${x.id}`), 'Alta anulada'); void invitaciones.recargar(); }}>Anular</Button>}</TableCell>
                         </TableRow>
                       ))}

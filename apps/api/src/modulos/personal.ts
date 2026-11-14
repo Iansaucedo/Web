@@ -6,7 +6,7 @@ import { bloquear, transaccion } from '../lib/transaccion';
 import { conflicto, noEncontrado, prohibido, reglaNegocio } from '../lib/errores';
 import { reloj } from '../lib/reloj';
 import { diaDeFechaDb, diaLocal, diasEntre, fechaDb } from '../lib/fechas';
-import { GESTION, PERSONAL } from '../servicios/acceso';
+import { DIAS_INVITACION, GESTION, invitacionVigente } from '../servicios/acceso';
 import { obtenerConfig } from '../servicios/config';
 import { ocupacionDia } from '../servicios/agenda';
 import { avisarRoles, emailSinCuenta } from '../servicios/avisos';
@@ -288,9 +288,19 @@ definir({
 
 // ─── Invitaciones ────────────────────────────────────────────────────
 
-const InvitacionSchema = z.object({ id: Id, email: z.string(), rol: Rol, creadaPor: z.string(), creadaEn: Instante, usadaEn: Instante.nullable() }).openapi('Invitacion');
+const InvitacionSchema = z
+  .object({ id: Id, email: z.string(), rol: Rol, creadaPor: z.string(), creadaEn: Instante, usadaEn: Instante.nullable(), caducada: z.boolean().openapi({ description: `Sin usar y con más de ${DIAS_INVITACION} días: ya no da el rol` }) })
+  .openapi('Invitacion');
 const incluirInv = { creadaPor: true } satisfies Prisma.InvitacionInclude;
-const aInv = (i: Prisma.InvitacionGetPayload<{ include: typeof incluirInv }>) => ({ id: i.id, email: i.email, rol: i.rol, creadaPor: i.creadaPor.nombre, creadaEn: i.creadaEn, usadaEn: i.usadaEn });
+const aInv = (i: Prisma.InvitacionGetPayload<{ include: typeof incluirInv }>) => ({
+  id: i.id,
+  email: i.email,
+  rol: i.rol,
+  creadaPor: i.creadaPor.nombre,
+  creadaEn: i.creadaEn,
+  usadaEn: i.usadaEn,
+  caducada: !i.usadaEn && !invitacionVigente(i, reloj.ahora()),
+});
 
 definir({
   metodo: 'get',
@@ -307,7 +317,7 @@ definir({
   ruta: '/invitaciones',
   etiqueta: 'Personal',
   resumen: 'Dar de alta a un empleado',
-  descripcion: 'El jefe invita mecánicos; el dueño, mecánicos y jefes. La persona entra con la cuenta de Google de ese email y recibe el rol.',
+  descripcion: `El jefe invita mecánicos; el dueño, mecánicos y jefes. La persona entra con la cuenta de Google de ese email y recibe el rol. La invitación vale ${DIAS_INVITACION} días; caducada, se puede volver a enviar.`,
   acceso: GESTION,
   idempotente: true,
   cuerpo: z.object({ email: z.email().transform((e) => e.trim().toLowerCase()), rol: z.enum(['MECANICO', 'JEFE']) }).strict(),
@@ -320,11 +330,11 @@ definir({
       throw conflicto('YA_REGISTRADO', 'Ese email ya tiene cuenta. Cambia su rol desde Usuarios');
     }
     const previa = await prisma.invitacion.findUnique({ where: { email: cuerpo.email } });
-    if (previa && !previa.usadaEn) throw conflicto('YA_INVITADO', 'Ese email ya tiene una invitación pendiente');
+    if (previa && invitacionVigente(previa, reloj.ahora())) throw conflicto('YA_INVITADO', 'Ese email ya tiene una invitación pendiente');
     const id = await transaccion(async (tx) => {
       const inv = previa
         ? await tx.invitacion.update({ where: { id: previa.id }, data: { rol: cuerpo.rol, creadaPorId: usuario.id, usadaEn: null, creadaEn: reloj.ahora() } })
-        : await tx.invitacion.create({ data: { email: cuerpo.email, rol: cuerpo.rol, creadaPorId: usuario.id } });
+        : await tx.invitacion.create({ data: { email: cuerpo.email, rol: cuerpo.rol, creadaPorId: usuario.id, creadaEn: reloj.ahora() } });
       await emailSinCuenta(tx, cuerpo.email, 'INVITACION', { rol: ROL_TEXTO[cuerpo.rol], invitadoPor: usuario.nombre, email: cuerpo.email }, '/login');
       return inv.id;
     });
@@ -461,12 +471,20 @@ definir({
 
 async function empleadoGestionable(actor: Usuario, empleadoId: string) {
   const e = await prisma.empleado.findUnique({ where: { id: empleadoId }, include: { usuario: true } });
-  if (!e) throw noEncontrado('El empleado');
+  // Solo se gestiona a quien hoy es personal: una fila de Empleado antigua (alguien que volvió a ser cliente) no cuenta.
+  if (!e || (e.usuario.rol !== 'MECANICO' && e.usuario.rol !== 'JEFE')) throw noEncontrado('El empleado');
   if (e.usuarioId === actor.id) throw prohibido('No puedes darte de baja a ti mismo');
   // El jefe gestiona mecánicos; a los jefes solo los gestiona el dueño.
   if (e.usuario.rol === 'JEFE' && actor.rol !== 'DUENO') throw prohibido('Solo el dueño da de baja a un jefe de taller');
-  if (e.usuario.rol === 'DUENO') throw prohibido();
   return e;
+}
+
+/** Lo que decidió el dueño solo lo deshace el dueño: un jefe no reactiva a quien dio de baja el dueño. */
+async function exigirPuedeReactivar(actor: Usuario, usuarioId: string) {
+  if (actor.rol === 'DUENO') return;
+  const ultima = await prisma.registroEliminacion.findFirst({ where: { entidad: 'Usuario', entidadId: usuarioId, modo: 'BAJA' }, orderBy: { fecha: 'desc' } });
+  const autor = ultima && (await prisma.usuario.findUnique({ where: { id: ultima.usuarioId } }));
+  if (autor?.rol === 'DUENO') throw prohibido('Lo dio de baja el dueño: solo el dueño puede reactivarlo');
 }
 
 definir({
@@ -504,9 +522,10 @@ definir({
   params: ParamId,
   cuerpo: z.object({}).strict(),
   respuesta: Ok,
-  errores: { 403: 'Un jefe reactivando a otro jefe', 404: 'El empleado no existe', 409: 'No estaba de baja' },
+  errores: { 403: 'Un jefe reactivando a otro jefe, o a alguien que dio de baja el dueño', 404: 'El empleado no existe', 409: 'No estaba de baja' },
   manejador: async ({ usuario, params }) => {
     const e = await empleadoGestionable(usuario, params.id);
+    await exigirPuedeReactivar(usuario, e.usuarioId);
     await transaccion(async (tx) => {
       const r = await tx.usuario.updateMany({ where: { id: e.usuarioId, activo: false, desvinculadoEn: null }, data: { activo: true } });
       if (!r.count) throw conflicto('NO_DE_BAJA', `${e.usuario.nombre} no está de baja`);

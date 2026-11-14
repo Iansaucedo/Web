@@ -7,6 +7,11 @@ export const GESTION: Rol[] = ['JEFE', 'DUENO'];
 export const esPersonal = (u: Usuario) => PERSONAL.includes(u.rol);
 export const esGestion = (u: Usuario) => GESTION.includes(u.rol);
 
+/** Días que vale una invitación de empleado. Pasado ese plazo, hay que volver a invitar. */
+export const DIAS_INVITACION = 30;
+export const invitacionVigente = (i: { usadaEn: Date | null; creadaEn: Date }, ahora: Date) =>
+  !i.usadaEn && ahora.getTime() - i.creadaEn.getTime() < DIAS_INVITACION * 86_400_000;
+
 /** Cliente del usuario. Sin perfil completo no puede operar (registrar vehículos, reservar…). */
 export async function clienteDe(u: Usuario) {
   const c = await prisma.cliente.findUnique({ where: { usuarioId: u.id } });

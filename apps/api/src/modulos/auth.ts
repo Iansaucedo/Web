@@ -9,6 +9,8 @@ import { ErrorApp } from '../lib/errores';
 import { UsuarioSchema, aUsuario } from './esquemas';
 
 /** Busca o crea el usuario. Si su email tiene invitación, recibe ese rol; si no, CLIENTE. */
+import { invitacionVigente } from '../servicios/acceso';
+import { reloj } from '../lib/reloj';
 export async function resolverUsuario(emailBruto: string, nombre: string, googleId?: string): Promise<Usuario> {
   const email = emailBruto.trim().toLowerCase();
   const existente = await prisma.usuario.findUnique({ where: { email } });
@@ -21,7 +23,7 @@ export async function resolverUsuario(emailBruto: string, nombre: string, google
   }
   return prisma.$transaction(async (tx) => {
     const invitacion = await tx.invitacion.findUnique({ where: { email } });
-    const valida = invitacion && !invitacion.usadaEn ? invitacion : null;
+    const valida = invitacion && invitacionVigente(invitacion, reloj.ahora()) ? invitacion : null;
     const usuario = await tx.usuario.create({ data: { email, nombre: nombre.slice(0, 120), googleId, rol: valida?.rol ?? 'CLIENTE' } });
     if (valida) {
       await tx.invitacion.update({ where: { id: valida.id }, data: { usadaEn: new Date() } });

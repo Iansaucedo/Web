@@ -90,6 +90,21 @@ describe('invitaciones y usuarios', () => {
     expect((await jefe.post('/api/invitaciones').send({ email: 'nuevo@taller.test', rol: 'MECANICO' })).status).toBe(409);
   });
 
+  it('una invitación caduca a los 30 días: ya no da el rol y se puede volver a enviar', async () => {
+    reloj.fijar(AHORA);
+    const jefe = await entrar('jefe@taller.test', 'JEFE');
+    await jefe.post('/api/invitaciones').send({ email: 'tarde@taller.test', rol: 'MECANICO' });
+    await jefe.post('/api/invitaciones').send({ email: 'reenvio@taller.test', rol: 'MECANICO' });
+    expect((await jefe.get('/api/invitaciones')).body.datos.map((i: { caducada: boolean }) => i.caducada)).toEqual([false, false]);
+    reloj.fijar(new Date(AHORA.getTime() + 31 * 86_400_000));
+    expect((await jefe.get('/api/invitaciones')).body.datos.map((i: { caducada: boolean }) => i.caducada)).toEqual([true, true]);
+    // Caducada: entra como cliente, sin el rol de la invitación.
+    expect((await anonimo().post('/api/auth/test-login').send({ email: 'tarde@taller.test' })).body.rol).toBe('CLIENTE');
+    // Se puede volver a invitar, y la nueva sí vale.
+    expect((await jefe.post('/api/invitaciones').send({ email: 'reenvio@taller.test', rol: 'MECANICO' })).status).toBe(201);
+    expect((await anonimo().post('/api/auth/test-login').send({ email: 'reenvio@taller.test' })).body.rol).toBe('MECANICO');
+  });
+
   it('QA: invitar a quien ya tiene cuenta no le cambia el rol en silencio', async () => {
     await entrar('ana@cliente.test');
     const dueno = await entrar('dueno@taller.test', 'DUENO');
