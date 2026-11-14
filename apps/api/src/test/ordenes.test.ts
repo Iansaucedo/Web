@@ -278,6 +278,17 @@ describe('completar, factura y entrega', () => {
     expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
   });
 
+  it('la factura queda fijada al completar: cambiar luego la tarifa o el IVA no la altera', async () => {
+    const { mec, ana, orden, partidas } = await lista();
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98510 });
+    const antes = (await ana.get(`/api/ordenes/${orden.id}`)).body.factura;
+    const dueno = await entrar('dueno@taller.test', 'DUENO');
+    expect((await dueno.put('/api/config').send({ tarifaHoraCentimos: 9000, ivaPorcentaje: 10 })).status).toBe(200);
+    expect((await ana.get(`/api/ordenes/${orden.id}`)).body.factura).toEqual(antes);
+    expect(antes).toMatchObject({ base: 5600 + 6000, total: 14036 });
+  });
+
   it('la factura no existe hasta completar', async () => {
     const { ana, orden } = await lista();
     expect((await ana.get(`/api/ordenes/${orden.id}/factura.pdf`)).status).toBe(409);

@@ -3,7 +3,7 @@ import { definir } from '../lib/ruta';
 import { prisma } from '../db';
 import { diaLocal, diasEntre, inicioDia, sumarDias } from '../lib/fechas';
 import { obtenerConfig } from '../servicios/config';
-import { calcularFactura } from './factura';
+import { calcularFacturas } from './factura';
 import { Centimos, Dia } from './esquemas';
 
 const EstadisticasSchema = z
@@ -49,12 +49,12 @@ definir({
 
     const porDia = new Map(diasEntre(query.desde, query.hasta).map((d) => [d, { fecha: d, facturadoCentimos: 0, citas: 0 }]));
     const total = { base: 0, iva: 0, total: 0 };
-    for (const o of completadas) {
-      const f = await calcularFactura(o.id);
+    // Todas las facturas del periodo de una vez (antes, varias consultas por cada orden).
+    for (const f of await calcularFacturas(completadas.map((o) => o.id))) {
       total.base += f.base;
       total.iva += f.iva;
       total.total += f.total;
-      const d = porDia.get(diaLocal(o.completadaEn!, c.zonaHoraria));
+      const d = porDia.get(diaLocal(f.orden.completadaEn!, c.zonaHoraria));
       if (d) d.facturadoCentimos += f.total;
     }
     for (const x of citas) {

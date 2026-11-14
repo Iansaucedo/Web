@@ -235,27 +235,30 @@ enum EstadoOrden {
 }
 
 model Orden {
-  id              String                  @id @default(cuid())
-  numero          Int                     @unique @default(autoincrement()) // se muestra como OR-0001
-  citaId          String                  @unique
-  cita            Cita                    @relation(fields: [citaId], references: [id])
-  vehiculoId      String
-  vehiculo        Vehiculo                @relation(fields: [vehiculoId], references: [id])
-  puestoId        String?
-  puesto          Puesto?                 @relation(fields: [puestoId], references: [id])
-  estado          EstadoOrden             @default(EN_DIAGNOSTICO)
-  diagnostico     String?
-  kmEntrada       Int
-  kmSalida        Int? // los pone el mecánico al completar; el jefe los confirma o corrige al entregar
-  entregaEstimada DateTime?               @db.Timestamptz // la ve el cliente; la fijan mecánico o jefe
-  notasRecepcion  String? // daños visibles, objetos, etc.
-  abiertaEn       DateTime                @default(now())
-  completadaEn    DateTime?
-  solicitudes     SolicitudAutorizacion[]
-  trabajos        RegistroTrabajo[]
-  observaciones   Observacion[]
-  eventos         EventoOrden[]
-  ocupaciones     OcupacionPuesto[]
+  id                 String                  @id @default(cuid())
+  numero             Int                     @unique @default(autoincrement()) // se muestra como OR-0001
+  citaId             String                  @unique
+  cita               Cita                    @relation(fields: [citaId], references: [id])
+  vehiculoId         String
+  vehiculo           Vehiculo                @relation(fields: [vehiculoId], references: [id])
+  puestoId           String?
+  puesto             Puesto?                 @relation(fields: [puestoId], references: [id])
+  estado             EstadoOrden             @default(EN_DIAGNOSTICO)
+  diagnostico        String?
+  kmEntrada          Int
+  kmSalida           Int? // los pone el mecánico al completar; el jefe los confirma o corrige al entregar
+  entregaEstimada    DateTime?               @db.Timestamptz // la ve el cliente; la fijan mecánico o jefe
+  notasRecepcion     String? // daños visibles, objetos, etc.
+  abiertaEn          DateTime                @default(now())
+  completadaEn       DateTime?
+  // Tarifa e IVA con los que se facturó: se fijan al completar para que la factura no cambie si luego cambia la configuración
+  tarifaHoraCentimos Int?
+  ivaPorcentaje      Int?
+  solicitudes        SolicitudAutorizacion[]
+  trabajos           RegistroTrabajo[]
+  observaciones      Observacion[]
+  eventos            EventoOrden[]
+  ocupaciones        OcupacionPuesto[]
 
   @@index([estado])
 }
