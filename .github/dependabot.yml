@@ -1,0 +1,12 @@
+# Mantiene al día las acciones de GitHub (fijadas por SHA) y las dependencias npm, con avisos de seguridad.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
