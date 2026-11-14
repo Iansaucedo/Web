@@ -5,12 +5,14 @@ import { prisma } from '../db';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { borrarCookieSesion, cerrarSesiones, fijarCookieSesion } from '../middleware/auth';
+import { almacenEstadoOAuth } from '../servicios/estadoOAuth';
+import type { StateStore } from 'passport-oauth2';
 import { ErrorApp } from '../lib/errores';
 import { UsuarioSchema, aUsuario } from './esquemas';
-
-/** Busca o crea el usuario. Si su email tiene invitación, recibe ese rol; si no, CLIENTE. */
 import { invitacionVigente } from '../servicios/acceso';
 import { reloj } from '../lib/reloj';
+
+/** Busca o crea el usuario. Si su email tiene invitación, recibe ese rol; si no, CLIENTE. */
 export async function resolverUsuario(emailBruto: string, nombre: string, googleId?: string): Promise<Usuario> {
   const email = emailBruto.trim().toLowerCase();
   const existente = await prisma.usuario.findUnique({ where: { email } });
@@ -43,10 +45,14 @@ if (googleConfigurado) {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         // Ruta pública a través del proxy de Next, para que la cookie quede en el dominio web.
         callbackURL: `${publicWebUrl}/api/auth/google/callback`,
+        // `state` contra el CSRF en el login (ver servicios/estadoOAuth.ts).
+        // Los tipos piden una función sobrecargada; passport-oauth2 elige la firma por `store.length` (3).
+        store: almacenEstadoOAuth as unknown as StateStore,
       },
       async (_at, _rt, profile, done) => {
         try {
-          const email = profile.emails?.find((e) => e.verified !== false)?.value;
+          // Solo un email que Google marque expresamente como verificado (sin el dato, no se da por bueno).
+          const email = profile.emails?.find((e) => e.verified === true)?.value;
           if (!email) return done(new ErrorApp(400, 'SIN_EMAIL', 'Google no devolvió un email verificado'));
           done(null, await resolverUsuario(email, profile.displayName || email, profile.id));
         } catch (e) {
@@ -69,7 +75,15 @@ definir({
   produce: 'redireccion',
   manejador: async ({ req, res }) => {
     if (!googleConfigurado) throw sinGoogle();
-    passport.authenticate('google', { scope: ['email', 'profile'], session: false, prompt: 'select_account' })(req, res);
+    // passport necesita `next`: sin él, un error (p. ej. `?code=` inventado en esta ruta) lanzaba
+    // «next is not a function» fuera de cualquier try/catch y tiraba el proceso entero.
+    await new Promise<void>((resolve) => {
+      res.once('finish', () => resolve());
+      passport.authenticate('google', { scope: ['email', 'profile'], session: false, prompt: 'select_account' })(req, res, (err?: unknown) => {
+        if (!res.headersSent) res.redirect(`/login?error=${encodeURIComponent(err instanceof ErrorApp ? err.codigo : 'GOOGLE')}`);
+        resolve();
+      });
+    });
   },
 });
 
