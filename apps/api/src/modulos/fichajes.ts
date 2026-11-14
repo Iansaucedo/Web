@@ -83,13 +83,18 @@ const JornadaSchema = z
   .openapi('Jornada');
 
 const RangoJornadas = z
-  .object({ desde: Dia, hasta: Dia, empleadoId: Id.optional() })
+  .object({
+    desde: Dia,
+    hasta: Dia,
+    empleadoId: Id.optional(),
+    mias: z.enum(['true', 'false']).optional().openapi({ description: '`true`: solo la jornada de quien llama, aunque sea jefe («Mi jornada»)' }),
+  })
   .refine((q) => q.desde <= q.hasta, { message: '`desde` debe ser anterior o igual a `hasta`', path: ['hasta'] })
   .refine((q) => diasEntre(q.desde, q.hasta).length <= 62, { message: 'Como máximo 62 días', path: ['hasta'] });
 
 async function jornadas(u: Usuario, q: z.infer<typeof RangoJornadas>) {
   let empleadoId = q.empleadoId;
-  if (!esGestion(u)) {
+  if (!esGestion(u) || q.mias === 'true') {
     const propio = (await empleadoDe(u)).id;
     if (empleadoId && empleadoId !== propio) throw prohibido('Solo puedes ver tu propia jornada');
     empleadoId = propio;
@@ -131,7 +136,7 @@ definir({
   ruta: '/jornadas',
   etiqueta: 'Fichaje',
   resumen: 'Jornadas por empleado y día',
-  descripcion: 'El jefe ve las de todos (o de `empleadoId`); un mecánico, solo la suya. Máximo 62 días.',
+  descripcion: 'El jefe ve las de todos (o de `empleadoId`); un mecánico, solo la suya. Con `mias=true`, solo la propia también para el jefe. Máximo 62 días.',
   acceso: PERSONAL,
   query: RangoJornadas,
   respuesta: lista(JornadaSchema),
@@ -230,13 +235,13 @@ definir({
   ruta: '/correcciones',
   etiqueta: 'Fichaje',
   resumen: 'Solicitudes de corrección',
-  descripcion: 'El jefe ve todas; cada empleado, las suyas.',
+  descripcion: 'El jefe ve todas; cada empleado, las suyas. Con `mias=true`, solo las propias también para el jefe.',
   acceso: PERSONAL,
-  query: z.object({ estado: EstadoCorreccion.optional() }),
+  query: z.object({ estado: EstadoCorreccion.optional(), mias: z.enum(['true', 'false']).optional() }),
   respuesta: lista(CorreccionSchema),
   manejador: async ({ usuario, query }) => {
     const c = await obtenerConfig(prisma);
-    const where = { ...(query.estado ? { estado: query.estado } : {}), ...(esGestion(usuario) ? {} : { empleadoId: (await empleadoDe(usuario)).id }) };
+    const where = { ...(query.estado ? { estado: query.estado } : {}), ...(esGestion(usuario) && query.mias !== 'true' ? {} : { empleadoId: (await empleadoDe(usuario)).id }) };
     const s = await prisma.solicitudCorreccionFichaje.findMany({ where, orderBy: { creadaEn: 'desc' }, take: 200 });
     return { datos: await Promise.all(s.map((x) => aCorreccion(x, c.zonaHoraria))) };
   },

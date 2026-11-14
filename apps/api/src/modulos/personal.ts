@@ -54,8 +54,8 @@ definir({
   ruta: '/puestos',
   etiqueta: 'Personal',
   resumen: 'Puestos del taller',
-  descripcion: 'Con el vehículo que ocupa cada puesto y el mecánico asignado hoy.',
-  acceso: PERSONAL,
+  descripcion: 'Con el vehículo que ocupa cada puesto y el mecánico asignado hoy. Solo gestión: un mecánico no ve dónde trabaja cada compañero.',
+  acceso: GESTION,
   respuesta: lista(PuestoSchema),
   manejador: async () => ({ datos: await listarPuestos() }),
 });
@@ -159,7 +159,8 @@ definir({
   ruta: '/asignaciones',
   etiqueta: 'Personal',
   resumen: 'Asignaciones de puestos de un día',
-  acceso: PERSONAL,
+  descripcion: 'Solo gestión: el mecánico ve sus órdenes del día con `GET /ordenes?mias=true`.',
+  acceso: GESTION,
   query: z.object({ fecha: Dia }),
   respuesta: lista(z.object({ puestoId: Id, puesto: z.string(), empleadoId: Id, mecanico: z.string() })),
   manejador: async ({ query }) => {

@@ -22,9 +22,10 @@ describe('puestos', () => {
     expect(lista.find((x: { id: string }) => x.id === puesto.id).ocupadoPor).toMatchObject({ codigo: 'OR-0001', matricula: '1234ABC' });
   });
 
-  it('el mecánico consulta puestos pero no los crea', async () => {
+  it('el mecánico no ve los puestos ni las asignaciones del equipo, ni crea puestos', async () => {
     const mec = await entrar('mec1@taller.test', 'MECANICO');
-    expect((await mec.get('/api/puestos')).status).toBe(200);
+    expect((await mec.get('/api/puestos')).status).toBe(403);
+    expect((await mec.get(`/api/asignaciones?fecha=${MANANA}`)).status).toBe(403);
     expect((await mec.post('/api/puestos').send({ nombre: 'X' })).status).toBe(403);
   });
 });
