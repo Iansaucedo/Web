@@ -98,6 +98,35 @@ describe('seguridad de la sesión', () => {
     expect(r.status).toBe(204);
     expect(r.headers['set-cookie']?.[0]).toMatch(/taller_sesion=;/);
   });
+
+  it('logout invalida en el servidor el token ya emitido (una cookie copiada antes deja de valer)', async () => {
+    const r = await anonimo().post('/api/auth/test-login').send({ email: 'ana@cliente.test' });
+    const cookie = ([] as string[]).concat(r.headers['set-cookie'] ?? []).find((c) => c.startsWith('taller_sesion='))!.split(';')[0];
+    expect((await anonimo().get('/api/auth/me').set('Cookie', cookie)).status).toBe(200);
+    expect((await anonimo().post('/api/auth/logout').set('Cookie', cookie).send({})).status).toBe(204);
+    const despues = await anonimo().get('/api/auth/me').set('Cookie', cookie);
+    expect(despues.status).toBe(401);
+    expect(despues.body.error).toBe('Tu sesión se cerró. Vuelve a entrar');
+    // Volver a entrar funciona con normalidad.
+    expect((await anonimo().post('/api/auth/test-login').send({ email: 'ana@cliente.test' })).status).toBe(200);
+  });
+
+  it('en producción, sin JWT_SECRET o con uno corto, la API no arranca', async () => {
+    const { comprobarSecretoSesion } = await import('../middleware/auth');
+    const antes = { entorno: process.env.NODE_ENV, secreto: process.env.JWT_SECRET };
+    try {
+      process.env.NODE_ENV = 'production';
+      delete process.env.JWT_SECRET;
+      expect(() => comprobarSecretoSesion()).toThrow(/JWT_SECRET/);
+      process.env.JWT_SECRET = 'corto';
+      expect(() => comprobarSecretoSesion()).toThrow(/32 caracteres/);
+      process.env.JWT_SECRET = 'x'.repeat(32);
+      expect(() => comprobarSecretoSesion()).not.toThrow();
+    } finally {
+      process.env.NODE_ENV = antes.entorno;
+      process.env.JWT_SECRET = antes.secreto;
+    }
+  });
 });
 
 describe('entrada robusta', () => {

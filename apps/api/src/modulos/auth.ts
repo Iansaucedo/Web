@@ -4,7 +4,7 @@ import type { Usuario } from '@prisma/client';
 import { prisma } from '../db';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
-import { COOKIE_SESION, fijarCookieSesion } from '../middleware/auth';
+import { borrarCookieSesion, cerrarSesiones, fijarCookieSesion } from '../middleware/auth';
 import { ErrorApp } from '../lib/errores';
 import { UsuarioSchema, aUsuario } from './esquemas';
 
@@ -91,7 +91,7 @@ definir({
             res.redirect(`/login?error=${encodeURIComponent(codigo)}`);
             return;
           }
-          fijarCookieSesion(res, { sub: u.id, rol: u.rol });
+          fijarCookieSesion(res, u);
           const cliente = u.rol === 'CLIENTE' ? await prisma.cliente.findUnique({ where: { usuarioId: u.id } }) : true;
           res.redirect(cliente ? '/' : '/perfil');
         } catch {
@@ -112,8 +112,11 @@ definir({
   acceso: 'publico',
   permiteEnBaja: true,
   codigo: 204,
-  manejador: async ({ res }) => {
-    res.clearCookie(COOKIE_SESION, { path: '/' });
+  descripcion: 'Borra la cookie y además invalida en el servidor los tokens ya emitidos del usuario (en todos sus dispositivos).',
+  manejador: async ({ usuario, res }) => {
+    // Ruta pública: `usuario` es null si no había sesión válida.
+    if (usuario) await cerrarSesiones(usuario.id);
+    borrarCookieSesion(res);
   },
 });
 
@@ -144,7 +147,7 @@ if (process.env.NODE_ENV === 'test') {
     permiteEnBaja: true,
     manejador: async ({ cuerpo, res }) => {
       const u = await resolverUsuario(cuerpo.email, cuerpo.nombre ?? cuerpo.email.split('@')[0]);
-      fijarCookieSesion(res, { sub: u.id, rol: u.rol });
+      fijarCookieSesion(res, u);
       return aUsuario(await prisma.usuario.findUniqueOrThrow({ where: { id: u.id }, include: { cliente: true, empleado: true } }));
     },
   });

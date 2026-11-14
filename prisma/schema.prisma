@@ -32,6 +32,8 @@ model Usuario {
   // Autobaja: el usuario puede recuperarla entrando antes de 14 días; después se desliga Google y se libera el email.
   bajaSolicitadaEn DateTime?
   desvinculadoEn   DateTime?
+  // Sube al cerrar sesión: los tokens firmados con una versión anterior dejan de valer
+  versionSesion    Int            @default(0)
   cliente          Cliente?
   empleado         Empleado?
   notificaciones   Notificacion[]

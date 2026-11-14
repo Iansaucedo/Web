@@ -30,7 +30,7 @@ El diseño de las pantallas y de los emails está en Figma (páginas «Flujos»,
 
 ```bash
 npm install
-cp .env.example .env              # rellenar GOOGLE_*, OWNER_EMAIL, JWT_SECRET (16+ caracteres) y SMTP_*
+cp .env.example .env              # rellenar GOOGLE_*, OWNER_EMAIL, JWT_SECRET (32+ caracteres; `openssl rand -base64 48`) y SMTP_*
 npm run db:up                     # PostgreSQL en Docker (o uno local)
 npm run db:migrate && npm run db:seed
 npm run dev:api                   # API en :4000

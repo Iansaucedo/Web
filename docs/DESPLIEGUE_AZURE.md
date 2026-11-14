@@ -137,7 +137,7 @@ Ve a cada Web App en Azure Portal > **Configuración / Variables de entorno** (*
 | Nombre | Valor de Ejemplo | Descripción |
 |---|---|---|
 | `DATABASE_URL` | `postgresql://...` | Conexión con PostgreSQL en Azure |
-| `JWT_SECRET` | *(clave aleatoria de 32+ caracteres)* | Secreto para firmar cookies JWT |
+| `JWT_SECRET` | *(clave aleatoria de 32+ caracteres)* | Secreto para firmar cookies JWT. **Obligatorio** con `NODE_ENV=production`: sin él, o con menos de 32 caracteres, la API no arranca. Genera uno con `openssl rand -base64 48` |
 | `OWNER_EMAIL` | `dueno@taller.es` | Email del dueño para avisos |
 | `GOOGLE_CLIENT_ID` | `...` | OAuth 2.0 de Google (opcional) |
 | `GOOGLE_CLIENT_SECRET` | `...` | OAuth 2.0 de Google (opcional) |

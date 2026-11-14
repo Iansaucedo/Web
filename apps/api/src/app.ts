@@ -8,6 +8,7 @@ import { montarRutas } from './lib/ruta';
 import { documentoOpenApi } from './openapi/registro';
 import { cargarModulos } from './modulos';
 import { limitar } from './middleware/limite';
+import { comprobarSecretoSesion } from './middleware/auth';
 
 function saltosProxy() {
   const n = Number(process.env.TRUST_PROXY ?? 1);
@@ -15,6 +16,7 @@ function saltosProxy() {
 }
 
 export function crearApp() {
+  comprobarSecretoSesion();
   cargarModulos();
   const app = express();
   app.disable('x-powered-by');
