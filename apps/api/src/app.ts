@@ -31,7 +31,9 @@ export function crearApp() {
   app.use(passport.initialize());
 
   const api = Router();
-  api.use('/auth', limitar('acceso', 20));
+  // Límite estricto solo en las rutas que inician sesión ('/auth/google' cubre también su callback).
+  // /auth/me no: se pide en cada carga de página, y todo un taller detrás de una misma IP lo agotaría.
+  api.use(['/auth/google', '/auth/test-login'], limitar('acceso', 20));
   api.use(limitar('general', 600));
   api.use(exigirJson);
   montarRutas(api);
