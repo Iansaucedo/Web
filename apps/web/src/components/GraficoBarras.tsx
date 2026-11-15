@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Table from '@mui/material/Table';
+import TableContainer from '@mui/material/TableContainer';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
@@ -23,12 +24,15 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
   const tope = Math.ceil(max / paso) * paso;
   const ancho = 720;
   const alto = 220;
-  const izq = 64;
+  const izq = 72;
+  const der = 28; // margen para que la última fecha no se corte
   const abajo = 28;
-  const banda = (ancho - izq) / Math.max(1, datos.length);
+  const banda = (ancho - izq - der) / Math.max(1, datos.length);
   const barra = Math.min(24, banda - 2);
   const y = (v: number) => (alto - abajo) * (1 - v / tope);
-  const ticks = [0, tope / 2, tope];
+  // Sin repetir etiquetas: con importes muy pequeños, la mitad y el tope se redondeaban al mismo texto.
+  const ticks = [0, tope / 2, tope].filter((t, i, todos) => todos.findIndex((o) => formato(o) === formato(t)) === i);
+  const vacio = datos.every((d) => d.y === 0);
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -39,17 +43,22 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
         </ToggleButtonGroup>
       </Box>
       {vista === 'tabla' ? (
-        <Table size="small">
-          <TableHead><TableRow><TableCell>Día</TableCell><TableCell align="right">{valor}</TableCell></TableRow></TableHead>
-          <TableBody>{datos.map((d) => <TableRow key={d.x}><TableCell>{etiqueta(d.x)}</TableCell><TableCell align="right">{formato(d.y)}</TableCell></TableRow>)}</TableBody>
-        </Table>
+        <TableContainer>
+          <Table size="small" aria-label={titulo}>
+            <TableHead><TableRow><TableCell>Día</TableCell><TableCell align="right">{valor}</TableCell></TableRow></TableHead>
+            <TableBody>{datos.map((d) => <TableRow key={d.x}><TableCell>{etiqueta(d.x)}</TableCell><TableCell align="right">{formato(d.y)}</TableCell></TableRow>)}</TableBody>
+          </Table>
+        </TableContainer>
+      ) : vacio ? (
+        // Todo a cero: un eje vacío con marcas inventadas no dice nada.
+        <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>Sin datos en este periodo.</Typography>
       ) : (
         <Box sx={{ position: 'relative', overflowX: 'auto' }}>
-          <svg viewBox={`0 0 ${ancho} ${alto}`} width="100%" role="img" aria-label={`${titulo}. Usa la vista de tabla para leer los valores.`} style={{ minWidth: 480, display: 'block' }}>
+          <svg viewBox={`0 0 ${ancho} ${alto}`} width="100%" role="img" aria-label={`${titulo}. Usa la vista de tabla para leer los valores.`} style={{ minWidth: 640, display: 'block' }}>
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={izq} x2={ancho} y1={y(t)} y2={y(t)} stroke={REJILLA} strokeWidth={1} />
-                <text x={izq - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#40484B">{formato(t)}</text>
+                <text x={izq - 8} y={y(t) + 4} textAnchor="end" fontSize={13} fill="#40484B">{formato(t)}</text>
               </g>
             ))}
             {datos.map((d, i) => {
@@ -69,7 +78,7 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
                     />
                   )}
                   {(i % Math.ceil(datos.length / 10) === 0 || i === datos.length - 1) && (
-                    <text x={cx} y={alto - 8} textAnchor="middle" fontSize={11} fill="#40484B">{etiqueta(d.x)}</text>
+                    <text x={cx} y={alto - 8} textAnchor="middle" fontSize={13} fill="#40484B">{etiqueta(d.x)}</text>
                   )}
                 </g>
               );
