@@ -12,6 +12,8 @@ import { enviarRecordatorios } from '../servicios/recordatorios';
  * Rutas de apoyo para los E2E. Solo existen con NODE_ENV=test: en producción no se montan
  * ni aparecen en la documentación.
  */
+const ALTA_PIEZAS = new Date('2026-11-01T08:00:00.000Z');
+
 if (process.env.NODE_ENV === 'test') {
   definir({
     metodo: 'post',
@@ -41,7 +43,9 @@ if (process.env.NODE_ENV === 'test') {
         { referencia: 'AC-5W30', nombre: 'Aceite 5W30 (litro)', precioCentimos: 950, stock: 1 },
       ]) {
         const pieza = await prisma.pieza.create({ data: p });
-        await prisma.movimientoStock.create({ data: { piezaId: pieza.id, tipo: 'ALTA', delta: p.stock, stockAntes: 0, stockDespues: p.stock, usuarioId: jefe.id } });
+        // Alta anterior a la semana de los tests (lunes 9 de noviembre de 2026): con la fecha real del sistema, el
+        // historial quedaba desordenado respecto a los movimientos que hacen los tests con el reloj fijado.
+        await prisma.movimientoStock.create({ data: { piezaId: pieza.id, tipo: 'ALTA', delta: p.stock, stockAntes: 0, stockDespues: p.stock, usuarioId: jefe.id, fecha: ALTA_PIEZAS } });
       }
       return { ok: true as const };
     },
