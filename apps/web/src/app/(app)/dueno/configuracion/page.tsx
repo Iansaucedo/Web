@@ -44,8 +44,8 @@ export default function Configuracion() {
                     </TextField>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 3 }}><TextField type="number" label="Llegadas por franja" {...num('recepcionesPorFranja')} /></Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}><TextField type="number" label="Vehículos por mecánico" {...num('vehiculosPorMecanico')} /></Grid>
-                  <Grid size={{ xs: 6, sm: 4 }}><TextField type="number" label="Horas mínimas para cancelar" {...num('horasMinimasCancelar')} /></Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}><TextField type="number" label="Vehículos por mecánico" {...num('vehiculosPorMecanico')} /></Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}><TextField type="number" label="Horas mínimas para cancelar" {...num('horasMinimasCancelar')} /></Grid>
                   <Grid size={{ xs: 6, sm: 4 }}><TextField type="number" label="Jornada (min/día)" {...num('jornadaMinutosDia')} /></Grid>
                 </Grid>
                 <FormGroup row sx={{ mt: 2 }}>

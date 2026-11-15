@@ -146,12 +146,13 @@ export default function Personal() {
                       const asig = asignaciones.datos?.datos.find((a) => a.puestoId === x.id);
                       return (
                         <Stack key={x.id} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                          <Typography sx={{ width: 110, fontWeight: 500 }}>{x.nombre}</Typography>
+                          <Typography sx={{ width: { xs: 84, sm: 110 }, flexShrink: 0, fontWeight: 500, overflowWrap: 'anywhere' }}>{x.nombre}</Typography>
                           {x.activo ? (
                             <TextField
                               select
                               size="small"
                               label="Mecánico"
+                              sx={{ flex: 1, minWidth: 0 }}
                               value={asig?.empleadoId ?? ''}
                               onChange={async (e) => { await acc.ejecutar(() => api.put('/asignaciones', { fecha, puestoId: x.id, empleadoId: e.target.value || null }), 'Asignación guardada'); recargarTodo(); }}
                             >
