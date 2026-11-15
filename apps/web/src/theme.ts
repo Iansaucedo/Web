@@ -118,6 +118,15 @@ export const theme = createTheme({
         },
       },
     },
+    // Tablas en pantallas estrechas. El contenedor es el que desplaza en horizontal:
+    // - `position: relative` para que lo posicionado en absoluto dentro (p. ej. los textos `visuallyHidden` de las
+    //   cabeceras) se recorte con él. Si no, se colocaba respecto a la página y la ensanchaba (en /jefe/empresas,
+    //   303 px de más en móvil).
+    // - En móvil la tabla no baja de 560 px y sus celdas no parten el texto: cada fila queda en una línea y la
+    //   tabla se desplaza dentro de su tarjeta, en vez de aplastar las columnas («lun, 9 nov» salía en tres líneas).
+    MuiTableContainer: { styleOverrides: { root: { position: 'relative' } } },
+    MuiTable: { styleOverrides: { root: { '@media (max-width:599.95px)': { minWidth: 560 } } } },
+    MuiTableCell: { styleOverrides: { root: { '@media (max-width:599.95px)': { whiteSpace: 'nowrap' } } } },
     MuiAppBar: {
       defaultProps: { elevation: 0, color: 'inherit' },
       styleOverrides: { root: { borderBottom: `1px solid ${m3.outlineVariant}` } },

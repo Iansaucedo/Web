@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Alert from '@mui/material/Alert';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch from '@mui/material/Switch';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -13,6 +14,7 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
@@ -36,6 +38,12 @@ const TIPOS: Record<TipoAusencia, { texto: string; tono: 'info' | 'aviso' | 'err
   OTRA: { texto: 'Ausencia', tono: 'neutro' },
 };
 interface Invitacion { id: string; email: string; rol: string; creadaPor: string; usadaEn: string | null; caducada: boolean }
+
+function estadoMecanico(x: Mecanico) {
+  if (!x.activo) return <ChipEstado tono="neutro" texto="De baja" />;
+  if (x.ausenteHoy) return <ChipEstado tono="error" texto="Ausente hoy" />;
+  return x.puestosHoy.length ? x.puestosHoy.join(', ') : <ChipEstado tono="aviso" texto="Sin puesto hoy" />;
+}
 
 export default function Personal() {
   const { usuario } = useSesion();
@@ -78,15 +86,22 @@ export default function Personal() {
               </Stack>
               <Carga {...mecanicos}>
                 {(m) => (
-                  <Table size="small">
+                  <TableContainer>
+                  {/* Tabla compacta: cabe en móvil sin desplazarse (las acciones se apilan), así los botones siempre se ven. */}
+                  <Table size="small" aria-label="Mecánicos" sx={{ '@media (max-width:599.95px)': { minWidth: 0 }, '& td': { whiteSpace: 'normal' } }}>
                     <TableBody>
                       {m.datos.map((x) => (
                         <TableRow key={x.empleadoId}>
-                          <TableCell><Typography sx={{ fontWeight: 500 }}>{x.nombre}</Typography><Typography variant="caption" color="text.secondary">{x.email}</Typography></TableCell>
-                          <TableCell>{!x.activo ? <ChipEstado tono="neutro" texto="De baja" /> : x.ausenteHoy ? <ChipEstado tono="error" texto="Ausente hoy" /> : x.puestosHoy.length ? x.puestosHoy.join(', ') : <ChipEstado tono="aviso" texto="Sin puesto hoy" />}</TableCell>
+                          <TableCell>
+                            <Typography sx={{ fontWeight: 500 }}>{x.nombre}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{x.email}</Typography>
+                            {/* En móvil el estado va debajo del nombre, para que quepan los botones. */}
+                            <Box sx={{ display: { sm: 'none' }, mt: 0.5 }}>{estadoMecanico(x)}</Box>
+                          </TableCell>
+                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{estadoMecanico(x)}</TableCell>
                           <TableCell align="right">
                             {x.activo ? (
-                              <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
                                 <Button size="small" onClick={() => { setFAus(hoy()); setHastaAus(''); setTipoAus('VACACIONES'); setNotaAus(''); ausencia.abrir(x); }}>Ausencia</Button>
                                 <Button size="small" color="error" onClick={() => { setMotivoBaja(''); bajaEmpleado.abrir(x); }}>Dar de baja</Button>
                               </Stack>
@@ -99,6 +114,7 @@ export default function Personal() {
                       {!m.datos.length && <TableRow><TableCell>No hay mecánicos. Dales de alta con su email de Google.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 )}
               </Carga>
               {Boolean(ausencias.datos?.datos.length) && (
@@ -161,7 +177,8 @@ export default function Personal() {
               <Typography variant="h6" sx={{ mb: 1 }}>Altas pendientes</Typography>
               <Carga {...invitaciones}>
                 {(i) => (
-                  <Table size="small">
+                  <TableContainer>
+                  <Table size="small" aria-label="Altas pendientes">
                     <TableHead><TableRow><TableCell>Email</TableCell><TableCell>Rol</TableCell><TableCell>Estado</TableCell><TableCell /></TableRow></TableHead>
                     <TableBody>
                       {i.datos.map((x) => (
@@ -175,6 +192,7 @@ export default function Personal() {
                       {!i.datos.length && <TableRow><TableCell colSpan={4}>No hay altas.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 )}
               </Carga>
             </CardContent>
