@@ -25,7 +25,7 @@ import { Cabecera, Carga, Confirmar, useDialogo } from '../../../../components/C
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
 import { useAccion, useDatos } from '../../../../lib/hooks';
-import { CATEGORIAS, euros, fechaHora, hora, hoy } from '../../../../lib/formato';
+import { CATEGORIAS, euros, fechaHora, hora, hoy, cuantos } from '../../../../lib/formato';
 import type { Lista, MovimientoStock, Pieza } from '../../../../lib/tipos';
 
 // Pantalla «Jefe · Catálogo de piezas» de Figma: tabla con lápiz por fila (menú de acciones) y panel «Movimientos de hoy».
@@ -53,7 +53,7 @@ export default function Catalogo() {
 
   return (
     <>
-      <Cabecera titulo="Catálogo de piezas" subtitulo={piezas.datos ? `${piezas.datos.datos.length} referencias · ${piezas.datos.datos.filter((p) => p.stockBajo).length} con stock bajo` : undefined} acciones={<Button variant="contained" onClick={() => nueva.abrir(true)}>Nueva pieza</Button>} />
+      <Cabecera titulo="Catálogo de piezas" subtitulo={piezas.datos ? `${cuantos(piezas.datos.datos.length, 'referencia', 'referencias')} · ${piezas.datos.datos.filter((p) => p.stockBajo).length} con stock bajo` : undefined} acciones={<Button variant="contained" onClick={() => nueva.abrir(true)}>Nueva pieza</Button>} />
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2, alignItems: { sm: 'center' } }}>
         <TextField label="Buscar por referencia o nombre" value={q} onChange={(e) => setQ(e.target.value)} sx={{ maxWidth: 420 }} />
         <Stack direction="row" spacing={1}>

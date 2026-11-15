@@ -16,7 +16,7 @@ import { ChipEstado } from '../../../components/ChipEstado';
 import { useSesion } from '../../../components/Sesion';
 import { api } from '../../../lib/api';
 import { useAccion, useDatos } from '../../../lib/hooks';
-import { dia, diaLargo, hora, hoy, sumarDias } from '../../../lib/formato';
+import { dia, diaLargo, hora, hoy, sumarDias, cuantos } from '../../../lib/formato';
 import type { DiaDisponible, Lista, ReservaMultiple, Vehiculo } from '../../../lib/tipos';
 import type { Tono } from '../../../theme';
 
@@ -78,7 +78,7 @@ export default function Reservas() {
           </Box>
           {enviar.error && <Alert severity="error" sx={{ mt: 2 }}>{enviar.error}</Alert>}
           <Button variant="contained" sx={{ mt: 2 }} disabled={sel.length < 2 || !fechas.length || enviar.ocupado} onClick={pedir}>
-            Enviar solicitud ({sel.length} vehículos)
+            Enviar solicitud ({cuantos(sel.length, 'vehículo', 'vehículos')})
           </Button>
         </CardContent>
       </Card>
@@ -93,7 +93,7 @@ export default function Reservas() {
                 <Card key={x.id} data-testid="reserva">
                   <CardContent sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Box sx={{ flex: 1, minWidth: 220 }}>
-                      <Typography sx={{ fontWeight: 500 }}>{x.codigo} · {x.vehiculos.length} vehículos</Typography>
+                      <Typography sx={{ fontWeight: 500 }}>{x.codigo} · {cuantos(x.vehiculos.length, 'vehículo', 'vehículos')}</Typography>
                       <Typography variant="body2" color="text.secondary">{x.vehiculos.map((v) => v.matricula).join(', ')}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {x.fechaOfrecida ? `Día ofrecido: ${diaLargo(x.fechaOfrecida)} · llegadas a las ${x.franjasOfrecidas.map(hora).join(', ')}` : `Prefieres: ${x.fechasPreferidas.map(dia).join(' · ')}`}

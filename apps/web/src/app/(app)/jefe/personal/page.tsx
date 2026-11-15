@@ -25,7 +25,7 @@ import { ChipEstado } from '../../../../components/ChipEstado';
 import { useSesion } from '../../../../components/Sesion';
 import { api } from '../../../../lib/api';
 import { useAccion, useDatos } from '../../../../lib/hooks';
-import { dia, diaLargo, hoy, sumarDias } from '../../../../lib/formato';
+import { dia, diaLargo, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { DiaDisponible, Lista, Mecanico, Puesto, TipoAusencia } from '../../../../lib/tipos';
 
 interface Asignacion { puestoId: string; puesto: string; empleadoId: string; mecanico: string }
@@ -138,7 +138,7 @@ export default function Personal() {
                 <Typography variant="h6">Puestos el {diaLargo(fecha)}</Typography>
                 <TextField type="date" size="small" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} sx={{ width: 170 }} inputProps={{ min: hoy(), 'aria-label': 'Día de las asignaciones' }} />
               </Stack>
-              {d && <Typography variant="body2" color={d.ocupadas > d.capacidad ? 'error' : 'text.secondary'} sx={{ mb: 2 }}>Capacidad: {d.capacidad} vehículos · {d.ocupadas} citas</Typography>}
+              {d && <Typography variant="body2" color={d.ocupadas > d.capacidad ? 'error' : 'text.secondary'} sx={{ mb: 2 }}>Capacidad: {cuantos(d.capacidad, 'vehículo', 'vehículos')} · {cuantos(d.ocupadas, 'cita', 'citas')}</Typography>}
               <Carga {...puestos}>
                 {(p) => (
                   <Stack spacing={1.5}>

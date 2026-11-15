@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import MuiLink from '@mui/material/Link';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -194,7 +195,7 @@ function TrabajoAceptado({ p, ordenId, editable, onHecho }: { p: Partida; ordenI
         <div>
           <Typography sx={{ fontWeight: 500 }}>{p.descripcion}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {horasMin(p.minutosRegistrados)} registradas de {p.horasEstimadas} h · {euros(p.importeEstimadoCentimos)} estimado
+            {horasMin(p.minutosRegistrados)} registradas de {p.horasEstimadas.toLocaleString('es-ES')} h · {euros(p.importeEstimadoCentimos)} estimado
           </Typography>
         </div>
         {p.terminadaEn ? <ChipEstado tono="exito" texto="Terminado" /> : <ChipEstado tono="info" texto="En curso" />}
@@ -320,7 +321,7 @@ export function OrdenTaller({ id }: { id: string }) {
           <>
             <Cabecera
               titulo={`${o.vehiculo.marca} ${o.vehiculo.modelo} · ${o.vehiculo.matricula}`}
-              subtitulo={<>{o.codigo} · {o.cliente.nombre} · <a href={`tel:${o.cliente.telefono}`}><PhoneIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {o.cliente.telefono}</a> · {o.puesto?.nombre ?? 'sin puesto'} · {o.kmEntrada.toLocaleString('es-ES')} km{o.kmSalida !== null ? ` → ${o.kmSalida.toLocaleString('es-ES')} km` : ''}</>}
+              subtitulo={<>{o.codigo} · {o.cliente.nombre} · <MuiLink href={`tel:${o.cliente.telefono}`} underline="hover"><PhoneIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {o.cliente.telefono}</MuiLink> · {o.puesto?.nombre ?? 'sin puesto'} · {o.kmEntrada.toLocaleString('es-ES')} km{o.kmSalida !== null ? ` → ${o.kmSalida.toLocaleString('es-ES')} km` : ''}</>}
               acciones={<ChipEstado {...ESTADO_ORDEN[o.estado]} />}
             />
             {acc.error && <Alert severity="error" sx={{ mb: 2 }} onClose={acc.limpiarError}>{acc.error}</Alert>}

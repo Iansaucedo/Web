@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import { Cabecera, Carga } from '../../../components/Comunes';
 import { GraficoBarras } from '../../../components/GraficoBarras';
 import { useDatos } from '../../../lib/hooks';
-import { dia, euros, horasMin, hoy, sumarDias } from '../../../lib/formato';
+import { dia, euros, horasMin, hoy, sumarDias, cuantos } from '../../../lib/formato';
 
 interface Estadisticas {
   facturacion: { base: number; iva: number; total: number };
@@ -60,7 +60,7 @@ export default function Estadisticas() {
               <Grid container spacing={2}>
                 <Grid size={{ xs: 6, md: 3 }}><Dato titulo="Facturado (IVA incl.)" valor={euros(d.facturacion.total)} detalle={`Base ${euros(d.facturacion.base)}`} /></Grid>
                 <Grid size={{ xs: 6, md: 3 }}><Dato titulo="Órdenes completadas" valor={String(d.ordenes.completadas)} detalle={`Ticket medio ${euros(d.ordenes.ticketMedioCentimos)}`} /></Grid>
-                <Grid size={{ xs: 6, md: 3 }}><Dato titulo="Tiempo medio de reparación" valor={`${d.ordenes.horasMediasReparacion.toLocaleString('es-ES')} h`} detalle={`${d.ordenes.abiertas} vehículos en el taller ahora`} /></Grid>
+                <Grid size={{ xs: 6, md: 3 }}><Dato titulo="Tiempo medio de reparación" valor={`${d.ordenes.horasMediasReparacion.toLocaleString('es-ES')} h`} detalle={`${cuantos(d.ordenes.abiertas, 'vehículo', 'vehículos')} en el taller ahora`} /></Grid>
                 <Grid size={{ xs: 6, md: 3 }}><Dato titulo="Citas" valor={String(d.citas.total)} detalle={`${d.citas.canceladas} canceladas · ${tasa} % no presentado`} /></Grid>
               </Grid>
               <Card>
@@ -82,7 +82,7 @@ export default function Estadisticas() {
                   <Card sx={{ height: '100%' }}>
                     <CardContent>
                       <Typography variant="h6" sx={{ mb: 1 }}>Horas registradas por mecánico</Typography>
-                      {d.mecanicos.map((m) => <Stack key={m.nombre} direction="row" sx={{ justifyContent: 'space-between', py: 0.5 }}><Typography variant="body2">{m.nombre}</Typography><Typography variant="body2">{horasMin(m.minutosRegistrados)} · {m.ordenes} órdenes</Typography></Stack>)}
+                      {d.mecanicos.map((m) => <Stack key={m.nombre} direction="row" sx={{ justifyContent: 'space-between', py: 0.5 }}><Typography variant="body2">{m.nombre}</Typography><Typography variant="body2">{horasMin(m.minutosRegistrados)} · {cuantos(m.ordenes, 'orden', 'órdenes')}</Typography></Stack>)}
                       {!d.mecanicos.length && <Typography color="text.secondary">Sin datos en este periodo.</Typography>}
                     </CardContent>
                   </Card>

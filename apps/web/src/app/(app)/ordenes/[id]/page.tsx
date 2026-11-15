@@ -51,7 +51,7 @@ function Responder({ solicitud, iva, onHecho }: { solicitud: Solicitud; iva: num
             <Stack key={p.id} direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
               <Box sx={{ flex: 1 }}>
                 <Typography sx={{ fontWeight: 500 }}>{p.descripcion}</Typography>
-                <Typography variant="body2" color="text.secondary">{euros(p.importeEstimadoCentimos)} · {p.horasEstimadas} h estimadas</Typography>
+                <Typography variant="body2" color="text.secondary">{euros(p.importeEstimadoCentimos)} · {p.horasEstimadas.toLocaleString('es-ES')} h estimadas</Typography>
                 <MiniaturasFotos fotos={p.fotos} trabajo={p.descripcion} />
               </Box>
               <ToggleButtonGroup exclusive size="small" value={decisiones[p.id] ?? null} onChange={(_, v: Decision | null) => v && setDecisiones((d) => ({ ...d, [p.id]: v }))} aria-label={`Decisión para ${p.descripcion}`}>
