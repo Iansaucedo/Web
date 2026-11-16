@@ -14,6 +14,9 @@ import { avisar, avisarRoles } from '../servicios/avisos';
 import { diaLargo, enumerar, hora, numeroReserva } from '../emails/formato';
 import { Dia, Id, Instante, ParamId, lista } from './esquemas';
 
+/** Cada cliente, como mucho 20 al día: cada una envía avisos y emails al taller. */
+const LIMITE_RESERVAS = { grupo: 'reservas', maximo: 20 };
+
 const EstadoReserva = z.enum(['EN_ESPERA', 'HUECO_OFRECIDO', 'CONVERTIDA', 'CANCELADA']);
 const ReservaSchema = z
   .object({
@@ -89,6 +92,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Pedir cita para varios vehículos el mismo día',
   descripcion: 'Solo empresas. El jefe busca un día con hueco para todos entre las fechas preferidas y lo ofrece.',
@@ -191,6 +195,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/aceptar',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Aceptar el día ofrecido',
   descripcion:
@@ -258,6 +263,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/rechazar-oferta',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Rechazar el día ofrecido sin cancelar la reserva',
   descripcion:
@@ -289,6 +295,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/cancelar',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Cancelar una reserva múltiple',
   descripcion: 'Mientras esté en espera o con hueco ofrecido. Una reserva ya convertida se gestiona cita a cita.',

@@ -1,4 +1,4 @@
-import type { Prisma, Usuario } from '@prisma/client';
+import type { ConfigTaller, Prisma, Usuario } from '@prisma/client';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
@@ -15,6 +15,9 @@ import { registrarEvento } from '../servicios/eventos';
 import { fechaLarga, hora, numeroOrden } from '../emails/formato';
 import { Dia, Id, Instante, ParamId, TextoLargo, lista } from './esquemas';
 import { OrdenResumenSchema, aOrdenResumen } from './ordenes-esquemas';
+
+/** Cada cliente, como mucho 20 al día: cada una envía avisos y emails al taller. */
+const LIMITE_CITAS = { grupo: 'citas', maximo: 20 };
 
 // ─── Disponibilidad ──────────────────────────────────────────────────
 
@@ -84,8 +87,9 @@ export const CitaSchema = z
 const incluir = { vehiculo: true, cliente: { include: { usuario: true } }, orden: { select: { id: true } } } satisfies Prisma.CitaInclude;
 type CitaBd = Prisma.CitaGetPayload<{ include: typeof incluir }>;
 
-async function aCita(x: CitaBd) {
-  const c = await obtenerConfig(prisma);
+/** `config` se pasa en los listados para no leerla una vez por cita. */
+async function aCita(x: CitaBd, config?: ConfigTaller) {
+  const c = config ?? (await obtenerConfig(prisma));
   return {
     id: x.id,
     estado: x.estado,
@@ -160,7 +164,7 @@ definir({
     }
     if (query.estado) where.estado = query.estado;
     const citas = await prisma.cita.findMany({ where, include: incluir, orderBy: { inicio: esPersonal(usuario) ? 'asc' : 'desc' }, take: 300 });
-    return { datos: await Promise.all(citas.map(aCita)) };
+    return { datos: await Promise.all(citas.map((x) => aCita(x, c))) };
   },
 });
 
@@ -178,6 +182,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/citas',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Reservar una cita',
   descripcion:
@@ -226,6 +231,7 @@ function exigirAntelacion(inicio: Date, horas: number) {
 definir({
   metodo: 'patch',
   ruta: '/citas/:id',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Cambiar la franja de una cita',
   descripcion: 'Solo el cliente, con la antelación mínima configurada (24 h). La cita vuelve a PENDIENTE para que el taller la confirme.',
@@ -248,11 +254,15 @@ definir({
       if (!r.count) throw conflicto('CITA_NO_ACTIVA', 'La cita ya no se puede cambiar');
       const actual = await tx.cita.findUniqueOrThrow({ where: { id: previa.id }, include: incluir });
       const datos = datosEmail(actual, c.zonaHoraria);
-      await avisar(tx, usuario.id, {
-        tipo: 'CITA_MODIFICADA',
-        mensaje: `Cita cambiada al ${datos.fecha} a las ${datos.hora}`,
-        enlace: '/ordenes',
-        datos: { ...datos, antes: `${fechaLarga(previa.inicio, c.zonaHoraria)}, ${hora(previa.inicio, c.zonaHoraria)}` },
+      const antes = `${fechaLarga(previa.inicio, c.zonaHoraria)}, ${hora(previa.inicio, c.zonaHoraria)}`;
+      // Al cliente de la cita (si la cambia el dueño en su nombre, el aviso no debe llegarle al dueño).
+      await avisar(tx, previa.cliente.usuarioId, { tipo: 'CITA_MODIFICADA', mensaje: `Cita cambiada al ${datos.fecha} a las ${datos.hora}`, enlace: '/ordenes', datos: { ...datos, antes } });
+      // La cita vuelve a «pendiente»: el jefe tiene que saberlo para confirmarla de nuevo.
+      await avisarRoles(tx, ['JEFE'], {
+        tipo: 'CITA_MODIFICADA_TALLER',
+        mensaje: `Cita cambiada, por confirmar: ${previa.vehiculo.matricula}, ${datos.fecha} ${datos.hora}`,
+        enlace: `/jefe/citas?fecha=${diaLocal(actual.inicio, c.zonaHoraria)}`,
+        datos: { ...datos, antes, cliente: previa.cliente.razonSocial ?? previa.cliente.usuario.nombre },
       });
     });
     return aCita(await prisma.cita.findUniqueOrThrow({ where: { id: previa.id }, include: incluir }));
@@ -262,6 +272,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/citas/:id/cancelar',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Cancelar una cita',
   descripcion: 'El cliente, con la antelación mínima. El jefe, en cualquier momento antes de recibir el vehículo y con motivo.',

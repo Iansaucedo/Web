@@ -10,6 +10,7 @@ const ventanas = new Map<string, { inicio: number; n: number }>();
 
 export function reiniciarLimites() {
   ventanas.clear();
+  reiniciarLimitesDiarios();
 }
 
 /**
@@ -42,4 +43,34 @@ export function limitar(nombre: string, maximo: number, ventanaMs = 60_000): Req
     if (ventanas.size > 50_000) for (const [k, x] of ventanas) if (ahora - x.inicio >= ventanaMs) ventanas.delete(k);
     next();
   };
+}
+
+/**
+ * Límite diario por usuario para acciones de cliente que envían avisos y emails al taller (reservar, cambiar o
+ * cancelar citas, pedir reservas de flota…). Cuenta por día natural del taller y solo las acciones que salen bien.
+ * En memoria: suficiente con una sola instancia (al reiniciar la API, los contadores empiezan de cero).
+ */
+const diarios = new Map<string, number>();
+let diaContadores = '';
+
+function claveDiaria(nombre: string, usuarioId: string, dia: string) {
+  if (dia !== diaContadores) {
+    diarios.clear();
+    diaContadores = dia;
+  }
+  return `${nombre}:${usuarioId}`;
+}
+
+export function usosDiarios(nombre: string, usuarioId: string, dia: string): number {
+  return diarios.get(claveDiaria(nombre, usuarioId, dia)) ?? 0;
+}
+
+export function sumarUsoDiario(nombre: string, usuarioId: string, dia: string): void {
+  const k = claveDiaria(nombre, usuarioId, dia);
+  diarios.set(k, (diarios.get(k) ?? 0) + 1);
+}
+
+export function reiniciarLimitesDiarios() {
+  diarios.clear();
+  diaContadores = '';
 }
