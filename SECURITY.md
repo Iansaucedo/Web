@@ -11,7 +11,8 @@ Usa **Security → Report a vulnerability** en el repositorio de GitHub (aviso p
 
 **Sesión y acceso**
 - Acceso solo con Google (OAuth 2.0) con parámetro `state` en una cookie httpOnly de un solo uso (contra el CSRF en el login).
-  Solo se aceptan emails que Google marca expresamente como verificados.
+  Solo se aceptan emails que Google marca expresamente como verificados. La cuenta queda ligada a la identidad de Google
+  del primer acceso: otra cuenta de Google con el mismo email (p. ej. un email de empresa reasignado) no entra.
 - Sesión en JWT (HS256, 8 h) dentro de una cookie `httpOnly`, `SameSite=Lax` y `Secure` (en producción o con HTTPS).
   En producción la API no arranca sin `JWT_SECRET` de al menos 32 caracteres; en el código no hay secreto por defecto.
 - El usuario y su rol se leen de la base de datos en cada petición: dar de baja o cambiar el rol tiene efecto inmediato.
@@ -24,17 +25,23 @@ Usa **Security → Report a vulnerability** en el repositorio de GitHub (aviso p
 - Sin SQL concatenado: Prisma y consultas parametrizadas.
 - Emails: todo texto se escapa al maquetar; los botones solo enlazan a la web del taller.
 - CSV: las celdas que empiezan por `= + - @` se neutralizan (inyección de fórmulas).
-- Fotos: tipo comprobado por los bytes, ≤ 5 MB; se sirven con `nosniff` y `Content-Security-Policy: default-src 'none'`.
+- Fotos: se leen solo después de comprobar la sesión y el rol; tipo comprobado por los bytes, ≤ 5 MB, y re-codificadas
+  (sin EXIF, GPS ni XMP; un archivo que no se puede decodificar se rechaza); como mucho 20 sin adjuntar por persona;
+  se sirven con `nosniff` y `Content-Security-Policy: default-src 'none'`.
+- Facturas con número propio y copia congelada al emitirlas: no cambian aunque luego se editen los datos de los que salen.
 - Errores: nunca se devuelve la traza; cada respuesta lleva un `requestId` para buscarla en los logs.
 - Los logs propios enmascaran los emails (`a***@dominio`); el texto de un error SMTP se registra tal cual lo devuelve el servidor de correo.
 
 **Plataforma**
 - Cabeceras: Helmet en la API; CSP, HSTS, `X-Frame-Options: DENY`, `nosniff` y `Referrer-Policy` en la web.
-- Límite de peticiones por IP (20/min en el acceso, 600/min en general). `TRUST_PROXY` debe coincidir con los proxies reales
+- Límite de peticiones por IP (20/min en el acceso, 600/min en general) y por cliente: 20 acciones al día que avisan al taller
+  (reservar, cambiar o cancelar citas; reservas de flota). `TRUST_PROXY` debe coincidir con los proxies reales
   y la API no debe ser accesible directamente desde internet (ver `docs/DESPLIEGUE_AZURE.md`).
 - Swagger (`/api/docs`) no se publica en producción salvo con `API_DOCS=true`.
 - Contenedores sin root y sin dependencias de desarrollo; Postgres de desarrollo solo en `127.0.0.1`.
-- CI: acciones de GitHub fijadas por SHA, permisos mínimos y Dependabot para acciones y npm. `npm audit`: 0 vulnerabilidades.
+- CI: tipos, ESLint, tests de la API y E2E en cada push y PR; los despliegues solo arrancan si la CI pasa. Acciones de GitHub
+  fijadas por SHA, permisos mínimos y Dependabot para acciones y npm. `npm audit`: 0 vulnerabilidades.
+- Correo: en el puerto 587 se exige STARTTLS (las credenciales SMTP nunca viajan en claro).
 - Concurrencia: cerrojos de PostgreSQL y actualizaciones condicionales en todo lo que compite (plazas, stock, fichajes, reservas).
 
 ## Riesgos aceptados
@@ -44,7 +51,7 @@ Usa **Security → Report a vulnerability** en el repositorio de GitHub (aviso p
 | **Modo de pruebas** (`NODE_ENV=test`): `POST /api/auth/test-login` entra con cualquier email sin Google, y las rutas `/api/test/*` (públicas) reinician la base de datos y cambian la hora del servidor. | Es un proyecto académico: permite probar y corregir todos los roles sin cuentas de Google. | Solo existe con `NODE_ENV=test`; en producción las rutas no se montan ni se documentan. **Nunca debe usarse con datos reales.** |
 | **Secretos configurados a mano** en Azure (App Settings y secretos de GitHub). | Despliegue de un único entorno, sin gestor de secretos. | Ningún secreto en el repositorio ni en su historial; `JWT_SECRET` obligatorio en producción. |
 | **CSP con `'unsafe-inline'`** en scripts y estilos. | Next.js y MUI (emotion) insertan scripts y estilos en línea; usar nonces exigiría renderizar todo de forma dinámica. | Sin `unsafe-eval` en producción, `object-src 'none'`, `frame-ancestors 'none'`; React escapa todo el contenido. |
-| **Límite de peticiones en memoria**: con varias instancias, cada una cuenta lo suyo. | Despliegue de una sola instancia. | Con más instancias habría que moverlo a Redis o al frontal (Azure Front Door / WAF). |
+| **Límites de peticiones en memoria** (por minuto y diarios): con varias instancias, cada una cuenta lo suyo, y al reiniciar la API los contadores vuelven a cero. | Despliegue de una sola instancia. | Con más instancias habría que moverlo a Redis o al frontal (Azure Front Door / WAF). |
 
 ## Decisiones de diseño
 
@@ -56,5 +63,6 @@ Usa **Security → Report a vulnerability** en el repositorio de GitHub (aviso p
   ajeno, el taller lo resuelve a mano.
 - **Conservación de datos tras la baja**: pasados 14 días de una autobaja se desliga Google y se libera el email, pero
   se conservan el nombre, el NIF y el historial de órdenes y facturas, por la obligación legal de conservar las facturas.
-  Las constancias de eliminación guardan una copia del registro borrado, sin el identificador de Google.
+  Las constancias de eliminación guardan una copia del registro borrado, sin el identificador de Google, durante 6 años.
+- **Retención**: los emails ya enviados o fallidos se borran a los 30 días; los avisos leídos, a los 180 (cualquiera, al año).
 - **Cerrar sesión cierra todas las sesiones del usuario**: es lo que permite invalidar en el servidor un token copiado.
