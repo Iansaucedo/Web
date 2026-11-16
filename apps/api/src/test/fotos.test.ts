@@ -1,15 +1,25 @@
+import sharp from 'sharp';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../db';
 import { reloj } from '../lib/reloj';
-import { limpiarFotosHuerfanas } from '../servicios/fotos';
-import { type Agente, clienteConCoche, ordenEnDiagnostico, ordenEnReparacion, PARTIDAS, reiniciarBd } from './ayudas';
+import { formatoReal, LADO_MAXIMO_FOTO, limpiarFotosHuerfanas, MAX_FOTOS_SUELTAS } from '../servicios/fotos';
+import { type Agente, anonimo, clienteConCoche, ordenEnDiagnostico, ordenEnReparacion, PARTIDAS, reiniciarBd } from './ayudas';
 
 beforeEach(reiniciarBd);
 
-// Cabeceras mínimas de cada formato: el servidor mira los bytes, no el nombre ni el tipo que dice el navegador.
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 2)]);
-const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP'), Buffer.alloc(200, 3)]);
+// Imágenes reales y pequeñas: el servidor las decodifica y las vuelve a codificar, así que deben ser válidas.
+const lienzo = (ancho = 40, alto = 20) => sharp({ create: { width: ancho, height: alto, channels: 3, background: { r: 200, g: 60, b: 30 } } });
+const JPEG = await lienzo().jpeg().toBuffer();
+const PNG = await lienzo().png().toBuffer();
+const WEBP = await lienzo().webp().toBuffer();
+/** Foto de móvil: EXIF con marca, modelo y GPS, y orientación «girar 90°» (se guarda apaisada, se ve vertical). */
+const JPEG_CON_EXIF = await lienzo(40, 20)
+  .withExif({ IFD0: { Make: 'MovilEspia', Model: 'X1', Copyright: 'Ana' }, IFD3: { GPSLatitudeRef: 'N', GPSLatitude: '43/1 27/1 0/1' } })
+  .withMetadata({ orientation: 6 })
+  .jpeg()
+  .toBuffer();
+// Cabeceras de formato correctas pero contenido roto: pasan el primer filtro y deben fallar al decodificar.
+const JPEG_FALSO = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
 
 const subir = (a: Agente, datos: Buffer, tipo = 'image/jpeg') => a.post('/api/fotos').set('Content-Type', tipo).send(datos);
 
@@ -32,8 +42,50 @@ describe('subir fotos', () => {
       expect(img.status).toBe(200);
       expect(img.headers['content-type']).toBe(tipo);
       expect(img.headers['x-content-type-options']).toBe('nosniff');
-      expect(Buffer.compare(img.body as Buffer, datos)).toBe(0);
+      // Se guarda re-codificada en el mismo formato, no los bytes originales.
+      expect(formatoReal(img.body as Buffer)).toBe(tipo);
+      expect((await sharp(img.body as Buffer).metadata()).width).toBe(40);
     }
+  });
+
+  it('QA: la foto se guarda sin EXIF ni GPS y con la orientación aplicada a los píxeles', async () => {
+    const { mec } = await ordenEnDiagnostico();
+    expect((await sharp(JPEG_CON_EXIF).metadata()).exif).toBeDefined();
+    const r = await subir(mec, JPEG_CON_EXIF);
+    expect(r.status).toBe(201);
+    const guardada = (await descargar(mec, r.body.url)).body as Buffer;
+    const m = await sharp(guardada).metadata();
+    expect(m.exif).toBeUndefined();
+    expect(m.xmp).toBeUndefined();
+    expect(m.orientation).toBeUndefined();
+    expect([m.width, m.height]).toEqual([20, 40]);
+    expect(guardada.includes(Buffer.from('MovilEspia'))).toBe(false);
+  });
+
+  it('QA: una foto enorme se reduce y un archivo con cabecera válida pero roto se rechaza', async () => {
+    const { mec } = await ordenEnDiagnostico();
+    const grande = await lienzo(4000, 1000).jpeg({ quality: 30 }).toBuffer();
+    const r = await subir(mec, grande);
+    expect(r.status).toBe(201);
+    const m = await sharp((await descargar(mec, r.body.url)).body as Buffer).metadata();
+    expect([m.width, m.height]).toEqual([LADO_MAXIMO_FOTO, LADO_MAXIMO_FOTO / 4]);
+    const roto = await subir(mec, JPEG_FALSO);
+    expect(roto.status).toBe(422);
+    expect(roto.body.codigo).toBe('FOTO_NO_VALIDA');
+  });
+
+  it(`QA: como mucho ${MAX_FOTOS_SUELTAS} fotos sin adjuntar por persona`, async () => {
+    const { mec } = await ordenEnDiagnostico();
+    for (let i = 0; i < MAX_FOTOS_SUELTAS; i++) expect((await subir(mec, PNG, 'image/png')).status).toBe(201);
+    const r = await subir(mec, PNG, 'image/png');
+    expect(r.status).toBe(422);
+    expect(r.body.codigo).toBe('DEMASIADAS_FOTOS_SUELTAS');
+  });
+
+  it('QA: sin sesión se responde 401 sin leer el archivo', async () => {
+    const r = await anonimo().post('/api/fotos').set('Content-Type', 'image/jpeg').send(JPEG);
+    expect(r.status).toBe(401);
+    expect(await prisma.fotoTrabajo.count()).toBe(0);
   });
 
   it('QA: un archivo que no es una imagen se rechaza aunque diga ser image/jpeg', async () => {
