@@ -34,6 +34,10 @@ export function crearTransporterNodemailer() {
     host: process.env.SMTP_HOST,
     port,
     secure,
+    // Sin TLS implícito (587), exige STARTTLS: si el servidor no lo ofrece, no se envían las credenciales en claro.
+    // Solo para un servidor de pruebas local sin TLS: SMTP_SIN_TLS=true.
+    requireTLS: !secure && process.env.SMTP_SIN_TLS !== 'true',
+    ignoreTLS: !secure && process.env.SMTP_SIN_TLS === 'true',
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
     tls: {
       rejectUnauthorized: process.env.SMTP_IGNORE_TLS !== 'true',

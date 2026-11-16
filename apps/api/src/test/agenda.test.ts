@@ -174,6 +174,20 @@ describe('cambiar y cancelar', () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ estado: 'PENDIENTE', inicio: madrid(PASADO, '11:00') });
     expect((await emailsA('ana@cliente.test')).map((e) => e.plantilla)).toContain('CITA_MODIFICADA');
+    // La cita vuelve a «pendiente»: el jefe recibe el aviso para confirmarla de nuevo.
+    expect((await emailsA('jefe@taller.test')).map((e) => e.plantilla)).toContain('CITA_MODIFICADA_TALLER');
+    const aviso = await prisma.notificacion.findFirstOrThrow({ where: { usuarioId: jefe.usuarioId, tipo: 'CITA_MODIFICADA_TALLER' } });
+    expect(aviso.enlace).toBe(`/jefe/citas?fecha=${PASADO}`);
+  });
+
+  it('QA: si el dueño cambia la cita, el aviso le llega al cliente y no al dueño', async () => {
+    await tallerAbierto(1);
+    const dueno = await entrar('dueno@taller.test', 'DUENO');
+    const ana = await clienteConCoche();
+    const cita = (await reservar(ana, PASADO, '09:00')).body;
+    expect((await dueno.patch(`/api/citas/${cita.id}`).send({ inicio: madrid(PASADO, '11:00') })).status).toBe(200);
+    expect((await emailsA('ana@cliente.test')).map((e) => e.plantilla)).toContain('CITA_MODIFICADA');
+    expect((await emailsA('dueno@taller.test')).map((e) => e.plantilla)).not.toContain('CITA_MODIFICADA');
   });
 
   it('QA: en un día lleno, la cita se puede mover a otra hora del mismo día (su plaza no cuenta dos veces)', async () => {

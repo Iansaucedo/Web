@@ -386,7 +386,7 @@ definir({
   ruta: '/usuarios/:id',
   etiqueta: 'Usuarios',
   resumen: 'Cambiar rol o dar de baja',
-  descripcion: 'Dar de baja cierra la sesión del usuario al instante. Nadie puede cambiarse a sí mismo. Un cliente con vehículos no pasa a personal.',
+  descripcion: 'Dar de baja cierra la sesión del usuario al instante, cancela sus citas futuras y reservas de flota pendientes y lo quita de los puestos asignados desde hoy. Dejar de ser mecánico también lo quita de esos puestos. Nadie puede cambiarse a sí mismo. Un cliente con vehículos no pasa a personal.',
   acceso: ['DUENO'],
   params: ParamId,
   cuerpo: z.object({ rol: Rol.optional(), activo: z.boolean().optional() }).strict(),
@@ -398,13 +398,25 @@ definir({
     if (!u) throw noEncontrado('El usuario');
     if (cuerpo.rol && cuerpo.rol !== 'CLIENTE' && u.cliente?.vehiculos.length) throw reglaNegocio('ES_CLIENTE', 'Este usuario es cliente con vehículos registrados. Debe usar otra cuenta');
     const r = await transaccion(async (tx) => {
-      if (cuerpo.activo === false && u.activo) {
+      const daDeBaja = cuerpo.activo === false && u.activo;
+      if (daDeBaja) {
         const { cliente: _c, googleId: _g, ...copia } = u;
         await dejarConstancia(tx, 'Usuario', copia, 'BAJA', usuario.id);
+        // Igual que la autobaja: sus citas futuras y reservas de flota pendientes se cancelan y liberan su plaza.
+        await tx.cita.updateMany({ where: { cliente: { usuarioId: u.id }, estado: { in: ['PENDIENTE', 'CONFIRMADA'] } }, data: { estado: 'CANCELADA' } });
+        await tx.reservaMultiple.updateMany({ where: { cliente: { usuarioId: u.id }, estado: { in: ['EN_ESPERA', 'HUECO_OFRECIDO'] } }, data: { estado: 'CANCELADA' } });
       }
-      const act = await tx.usuario.update({ where: { id: u.id }, data: { ...cuerpo, ...(cuerpo.activo === false ? { bajaSolicitadaEn: null } : {}) } });
+      const act = await tx.usuario.update({
+        where: { id: u.id },
+        data: { ...cuerpo, ...(cuerpo.activo === false ? { bajaSolicitadaEn: null } : {}), ...(daDeBaja ? { versionSesion: { increment: 1 } } : {}) },
+      });
       if (act.rol === 'MECANICO' || act.rol === 'JEFE') await tx.empleado.upsert({ where: { usuarioId: u.id }, create: { usuarioId: u.id, activo: act.activo }, update: { activo: act.activo } });
       else await tx.empleado.updateMany({ where: { usuarioId: u.id }, data: { activo: false } });
+      // Quien deja de ser mecánico en activo (baja o cambio de rol) sale de los puestos que tenía asignados desde hoy.
+      if (!act.activo || act.rol !== 'MECANICO') {
+        const hoy = fechaDb(diaLocal(reloj.ahora(), (await obtenerConfig(tx)).zonaHoraria));
+        await tx.asignacionPuesto.deleteMany({ where: { empleado: { usuarioId: u.id }, fecha: { gte: hoy } } });
+      }
       return act;
     });
     return { id: r.id, email: r.email, nombre: r.nombre, rol: r.rol, activo: r.activo, creadoEn: r.creadoEn };
