@@ -1,4 +1,4 @@
-import type { Fichaje, TipoFichaje, Usuario } from '@prisma/client';
+import type { Fichaje, Prisma, TipoFichaje, Usuario } from '@prisma/client';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
@@ -11,7 +11,8 @@ import { empleadoDe, esGestion, GESTION, PERSONAL } from '../servicios/acceso';
 import { obtenerConfig } from '../servicios/config';
 import { avisar, avisarRoles } from '../servicios/avisos';
 import { diaLargo, FICHAJE_TEXTO } from '../emails/formato';
-import { Dia, Id, Instante, ParamId, TextoCorto, lista } from './esquemas';
+import { Dia, Id, Instante, ParamId, TextoCorto } from './esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, paginarEnMemoria, saltoYTope } from '../lib/paginacion';
 
 const TipoFichajeSchema = z.enum(['ENTRADA', 'INICIO_PAUSA', 'FIN_PAUSA', 'SALIDA']);
 const Hora = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Usa el formato HH:mm').openapi({ example: '16:05' });
@@ -138,10 +139,18 @@ definir({
   resumen: 'Jornadas por empleado y día',
   descripcion: 'El jefe ve las de todos (o de `empleadoId`); un mecánico, solo la suya. Con `mias=true`, solo la propia también para el jefe. Máximo 62 días.',
   acceso: PERSONAL,
-  query: RangoJornadas,
-  respuesta: lista(JornadaSchema),
+  query: RangoJornadas.extend(consultaPaginada(['nombre', 'fecha'])),
+  respuesta: listaPaginada(JornadaSchema),
   errores: { 403: 'Un mecánico pidiendo la jornada de otro' },
-  manejador: async ({ usuario, query }) => ({ datos: await jornadas(usuario, query) }),
+  manejador: async ({ usuario, query }) => {
+    const filas = await jornadas(usuario, query);
+    // Por defecto, por empleado y día; por fecha, los días más recientes primero salvo que se pida lo contrario.
+    const porFecha = query.orden === 'fecha';
+    const dir = query.dir ?? (porFecha ? 'desc' : 'asc');
+    const clave = (j: (typeof filas)[number]) => (porFecha ? `${j.fecha}\u0000${j.nombre}\u0000${j.empleadoId}` : `${j.nombre}\u0000${j.empleadoId}\u0000${j.fecha}`);
+    filas.sort((a, b) => clave(a).localeCompare(clave(b)) * (dir === 'asc' ? 1 : -1));
+    return paginarEnMemoria(filas, query);
+  },
 });
 
 /** Celda CSV: entre comillas y sin permitir que Excel la interprete como fórmula. */
@@ -237,13 +246,18 @@ definir({
   resumen: 'Solicitudes de corrección',
   descripcion: 'El jefe ve todas; cada empleado, las suyas. Con `mias=true`, solo las propias también para el jefe.',
   acceso: PERSONAL,
-  query: z.object({ estado: EstadoCorreccion.optional(), mias: z.enum(['true', 'false']).optional() }),
-  respuesta: lista(CorreccionSchema),
+  query: z.object({ estado: EstadoCorreccion.optional(), mias: z.enum(['true', 'false']).optional(), ...consultaPaginada(['creadaEn', 'fecha']) }),
+  respuesta: listaPaginada(CorreccionSchema),
   manejador: async ({ usuario, query }) => {
     const c = await obtenerConfig(prisma);
     const where = { ...(query.estado ? { estado: query.estado } : {}), ...(esGestion(usuario) && query.mias !== 'true' ? {} : { empleadoId: (await empleadoDe(usuario)).id }) };
-    const s = await prisma.solicitudCorreccionFichaje.findMany({ where, orderBy: { creadaEn: 'desc' }, take: 200 });
-    return { datos: await Promise.all(s.map((x) => aCorreccion(x, c.zonaHoraria))) };
+    const orderBy: Prisma.SolicitudCorreccionFichajeOrderByWithRelationInput[] = ordenar(
+      query,
+      { creadaEn: (dir) => ({ creadaEn: dir }), fecha: (dir) => ({ fecha: dir }) },
+      { orden: 'creadaEn', dir: 'desc' },
+    );
+    const [total, s] = await Promise.all([prisma.solicitudCorreccionFichaje.count({ where }), prisma.solicitudCorreccionFichaje.findMany({ where, orderBy, ...saltoYTope(query) })]);
+    return pagina(await Promise.all(s.map((x) => aCorreccion(x, c.zonaHoraria))), total, query);
   },
 });
 

@@ -133,7 +133,7 @@ test('flujo completo de una reparación', async ({ page, request }) => {
     await expect(confirmar).toBeDisabled();
     await dc.getByLabel('Kilómetros a la salida').fill('98462');
     await confirmar.click();
-    await expect(page.getByText('Factura: 116,16 € IVA incluido')).toBeVisible();
+    await expect(page.getByText('Factura F-2026-0001: 116,16 € IVA incluido')).toBeVisible();
   });
 
   await test.step('Jefe: entrega el vehículo y el puesto queda libre', async () => {

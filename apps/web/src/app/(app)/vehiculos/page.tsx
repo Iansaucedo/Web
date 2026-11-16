@@ -16,8 +16,9 @@ import Typography from '@mui/material/Typography';
 import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../components/Comunes';
 import { HistorialVehiculo } from '../../../components/Historial';
 import { api } from '../../../lib/api';
-import { useAccion, useDatos } from '../../../lib/hooks';
-import type { Lista, Vehiculo } from '../../../lib/tipos';
+import { useAccion, useListado } from '../../../lib/hooks';
+import { Paginacion } from '../../../components/Paginacion';
+import type { Vehiculo } from '../../../lib/tipos';
 
 const COMBUSTIBLES = [['GASOLINA', 'Gasolina'], ['DIESEL', 'Diésel'], ['HIBRIDO', 'Híbrido'], ['ELECTRICO', 'Eléctrico'], ['GLP', 'GLP']];
 const MARCAS = ['Audi', 'BMW', 'Citroën', 'Dacia', 'Fiat', 'Ford', 'Hyundai', 'Kia', 'Mercedes-Benz', 'Nissan', 'Opel', 'Peugeot', 'Renault', 'Seat', 'Škoda', 'Tesla', 'Toyota', 'Volkswagen', 'Volvo', 'Otra'];
@@ -67,7 +68,7 @@ function NuevoVehiculo({ abierto, onCerrar, onCreado }: { abierto: boolean; onCe
 
 function Vehiculos() {
   const params = useSearchParams();
-  const v = useDatos<Lista<Vehiculo>>('/vehiculos');
+  const v = useListado<Vehiculo>('/vehiculos', {}, { porPagina: 25, orden: 'matricula', dir: 'asc' });
   const [nuevo, setNuevo] = useState(false);
   const [historial, setHistorial] = useState<Vehiculo | null>(null);
   const borrar = useDialogo<Vehiculo>();
@@ -104,6 +105,9 @@ function Vehiculos() {
           )
         }
       </Carga>
+      {Boolean(v.datos?.total) && (
+        <Paginacion listado={v} nombre={['vehículo', 'vehículos']} ordenes={[{ valor: 'matricula', texto: 'Matrícula' }, { valor: 'marca', texto: 'Marca' }, { valor: 'kilometros', texto: 'Kilómetros', dir: 'desc' }]} />
+      )}
       <NuevoVehiculo abierto={nuevo} onCerrar={() => setNuevo(false)} onCreado={v.recargar} />
       <Confirmar
         abierto={borrar.abierto}

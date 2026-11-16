@@ -24,9 +24,10 @@ import EditIcon from '@mui/icons-material/EditOutlined';
 import { Cabecera, Carga, Confirmar, useDialogo } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useDatos, useListado } from '../../../../lib/hooks';
+import { CeldaOrden, Paginacion } from '../../../../components/Paginacion';
 import { CATEGORIAS, euros, fechaHora, hora, hoy, cuantos } from '../../../../lib/formato';
-import type { Lista, MovimientoStock, Pieza } from '../../../../lib/tipos';
+import type { MovimientoStock, Paginada, Pieza } from '../../../../lib/tipos';
 
 // Pantalla «Jefe · Catálogo de piezas» de Figma: tabla con lápiz por fila (menú de acciones) y panel «Movimientos de hoy».
 const TIPO_MOV: Record<MovimientoStock['tipo'], string> = { ALTA: 'Alta', AJUSTE: 'Ajuste', CUADRE: 'Cuadre de inventario', USO: 'Usada en reparación', RECEPCION: 'Pedido recibido' };
@@ -35,8 +36,10 @@ type Filtro = '' | 'stockBajo' | 'inactivas';
 export default function Catalogo() {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('');
-  const piezas = useDatos<Lista<Pieza>>(`/piezas?${new URLSearchParams({ ...(q ? { q } : {}), ...(filtro ? { [filtro]: 'true' } : {}) })}`);
-  const movimientos = useDatos<Lista<MovimientoStock & { pieza: string }>>(`/movimientos-stock?fecha=${hoy()}`);
+  const piezas = useListado<Pieza>('/piezas', { q: q.trim(), stockBajo: filtro === 'stockBajo' && 'true', inactivas: filtro === 'inactivas' && 'true' }, { orden: 'nombre', dir: 'asc' });
+  // Solo el total: cuántas están en stock bajo en todo el catálogo, no en la página.
+  const bajas = useDatos<Paginada<Pieza>>('/piezas?stockBajo=true&porPagina=10');
+  const movimientos = useListado<MovimientoStock & { pieza: string }>(`/movimientos-stock?fecha=${hoy()}`, {}, { prefijo: 'm', porPagina: 10, orden: 'fecha', dir: 'desc' });
   const [menu, setMenu] = useState<{ ancla: HTMLElement; pieza: Pieza } | null>(null);
   const nueva = useDialogo();
   const ajuste = useDialogo<Pieza>();
@@ -48,12 +51,12 @@ export default function Catalogo() {
   const [real, setReal] = useState('');
   const [motivo, setMotivo] = useState('');
   const acc = useAccion();
-  const recargar = () => { void piezas.recargar(); void movimientos.recargar(); };
+  const recargar = () => { void piezas.recargar(); void movimientos.recargar(); void bajas.recargar(); };
   const abrir = (d: { abrir: (p: Pieza) => void }) => { const p = menu!.pieza; setMenu(null); setMotivo(''); setDelta(''); setReal(String(p.stock)); d.abrir(p); };
 
   return (
     <>
-      <Cabecera titulo="Catálogo de piezas" subtitulo={piezas.datos ? `${cuantos(piezas.datos.datos.length, 'referencia', 'referencias')} · ${piezas.datos.datos.filter((p) => p.stockBajo).length} con stock bajo` : undefined} acciones={<Button variant="contained" onClick={() => nueva.abrir(true)}>Nueva pieza</Button>} />
+      <Cabecera titulo="Catálogo de piezas" subtitulo={piezas.datos && bajas.datos ? `${cuantos(piezas.datos.total, 'referencia', 'referencias')} · ${bajas.datos.total} con stock bajo` : undefined} acciones={<Button variant="contained" onClick={() => nueva.abrir(true)}>Nueva pieza</Button>} />
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2, alignItems: { sm: 'center' } }}>
         <TextField label="Buscar por referencia o nombre" value={q} onChange={(e) => setQ(e.target.value)} sx={{ maxWidth: 420 }} />
         <Stack direction="row" spacing={1}>
@@ -69,7 +72,15 @@ export default function Catalogo() {
               <Card>
                 <TableContainer>
                   <Table>
-                    <TableHead><TableRow><TableCell>Referencia</TableCell><TableCell>Pieza</TableCell><TableCell align="right">Precio</TableCell><TableCell>Stock</TableCell><TableCell /></TableRow></TableHead>
+                    <TableHead>
+                      <TableRow>
+                        <CeldaOrden listado={piezas} campo="referencia">Referencia</CeldaOrden>
+                        <CeldaOrden listado={piezas} campo="nombre">Pieza</CeldaOrden>
+                        <CeldaOrden listado={piezas} campo="precio" align="right">Precio</CeldaOrden>
+                        <CeldaOrden listado={piezas} campo="stock">Stock</CeldaOrden>
+                        <TableCell />
+                      </TableRow>
+                    </TableHead>
                     <TableBody>
                       {d.datos.map((p) => (
                         <TableRow key={p.id} sx={{ opacity: p.activa ? 1 : 0.6 }}>
@@ -94,6 +105,7 @@ export default function Catalogo() {
               </Card>
             )}
           </Carga>
+          <Paginacion listado={piezas} nombre={['pieza', 'piezas']} ordenes={[{ valor: 'nombre', texto: 'Nombre' }, { valor: 'referencia', texto: 'Referencia' }, { valor: 'categoria', texto: 'Categoría' }, { valor: 'stock', texto: 'Stock' }, { valor: 'precio', texto: 'Precio' }]} />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>Solo el jefe (y el dueño) cambia el stock, siempre con motivo. Todo queda en el historial de cada pieza.</Typography>
         </Grid>
         <Grid size={{ xs: 12, lg: 4 }}>
@@ -114,6 +126,7 @@ export default function Catalogo() {
                   </Stack>
                 )}
               </Carga>
+              <Paginacion listado={movimientos} nombre={['movimiento', 'movimientos']} tamanos={[10, 25, 50]} />
             </CardContent>
           </Card>
         </Grid>
@@ -213,7 +226,7 @@ export default function Catalogo() {
 }
 
 function Movimientos({ piezaId }: { piezaId: string }) {
-  const m = useDatos<Lista<MovimientoStock>>(`/piezas/${piezaId}/movimientos`);
+  const m = useListado<MovimientoStock>(`/piezas/${piezaId}/movimientos`, {}, { enUrl: false, orden: 'fecha', dir: 'desc' });
   return (
     <Carga {...m}>
       {(d) => (
@@ -235,6 +248,7 @@ function Movimientos({ piezaId }: { piezaId: string }) {
               </TableBody>
             </Table>
           </TableContainer>
+          <Paginacion listado={m} nombre={['movimiento', 'movimientos']} />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>La suma de los cambios es el stock actual.</Typography>
         </>
       )}

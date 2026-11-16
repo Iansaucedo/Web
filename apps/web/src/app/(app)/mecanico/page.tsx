@@ -12,13 +12,14 @@ import Typography from '@mui/material/Typography';
 import { Cabecera, Carga, Vacio } from '../../../components/Comunes';
 import { ChipEstado } from '../../../components/ChipEstado';
 import { TarjetaFichaje } from '../../../components/Fichar';
-import { useDatos } from '../../../lib/hooks';
+import { useListado } from '../../../lib/hooks';
+import { Paginacion } from '../../../components/Paginacion';
 import { ESTADO_ORDEN, fechaHora } from '../../../lib/formato';
-import type { Lista, OrdenResumen } from '../../../lib/tipos';
+import type { OrdenResumen } from '../../../lib/tipos';
 
 export default function PanelMecanico() {
   const [ver, setVer] = useState<'mias' | 'todas'>('mias');
-  const ordenes = useDatos<Lista<OrdenResumen>>(ver === 'mias' ? '/ordenes?mias=true' : '/ordenes?abiertas=true');
+  const ordenes = useListado<OrdenResumen>('/ordenes', ver === 'mias' ? { mias: 'true' } : { abiertas: 'true' }, { orden: 'abiertaEn', dir: 'desc' });
   return (
     <>
       <Cabecera titulo="Mis órdenes de hoy" />
@@ -58,6 +59,11 @@ export default function PanelMecanico() {
           }
         </Carga>
       </Stack>
+      <Paginacion
+        listado={ordenes}
+        nombre={['orden', 'órdenes']}
+        ordenes={[{ valor: 'abiertaEn', texto: 'Entrada', dir: 'desc' }, { valor: 'entregaEstimada', texto: 'Entrega prevista' }, { valor: 'estado', texto: 'Estado' }, { valor: 'numero', texto: 'Número', dir: 'desc' }]}
+      />
     </>
   );
 }

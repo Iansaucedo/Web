@@ -47,7 +47,7 @@ import { useSesion } from './Sesion';
 import { api } from '../lib/api';
 import { useDatos } from '../lib/hooks';
 import { fechaHora, ROL } from '../lib/formato';
-import type { Lista, Notificacion, Rol } from '../lib/tipos';
+import type { Notificacion, Paginada, Rol } from '../lib/tipos';
 
 type Entrada = { texto: string; ruta: string; icono: typeof HomeIcon };
 type Grupo = { titulo?: string; entradas: Entrada[] };
@@ -156,7 +156,8 @@ const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 
 
 function Campana() {
   const [ancla, setAncla] = useState<HTMLElement | null>(null);
-  const { datos, recargar } = useDatos<Lista<Notificacion> & { noLeidas: number }>('/notificaciones');
+  // Los 10 más recientes; el resto, en la pantalla de notificaciones (paginada).
+  const { datos, recargar } = useDatos<Paginada<Notificacion> & { noLeidas: number }>('/notificaciones?porPagina=10');
   const router = useRouter();
   // Sin WebSockets (requisito): los avisos se consultan cada minuto mientras la pestaña está visible.
   useEffect(() => {
@@ -207,6 +208,11 @@ function Campana() {
               </ListItem>
             ))}
           </List>
+          {Boolean(datos && datos.total > datos.datos.length) && (
+            <Box sx={{ p: 1, textAlign: 'center' }}>
+              <Button size="small" onClick={() => { setAncla(null); router.push('/notificaciones'); }}>Ver los {datos!.total} avisos</Button>
+            </Box>
+          )}
         </Box>
       </Popover>
     </>

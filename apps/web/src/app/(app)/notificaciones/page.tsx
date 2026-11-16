@@ -22,9 +22,10 @@ import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
 import { Cabecera, Carga, Vacio } from '../../../components/Comunes';
 import { useSesion } from '../../../components/Sesion';
 import { api } from '../../../lib/api';
-import { useDatos } from '../../../lib/hooks';
+import { useListado } from '../../../lib/hooks';
+import { Paginacion } from '../../../components/Paginacion';
 import { fechaCorta } from '../../../lib/formato';
-import type { Lista, Notificacion } from '../../../lib/tipos';
+import type { Notificacion } from '../../../lib/tipos';
 
 type Filtro = 'todas' | 'noLeidas' | 'autorizaciones' | 'citas' | 'ordenes';
 const FILTROS: [Filtro, string][] = [['todas', 'Todas'], ['noLeidas', 'No leídas'], ['autorizaciones', 'Autorizaciones'], ['citas', 'Citas'], ['ordenes', 'Órdenes']];
@@ -51,8 +52,10 @@ function cuando(iso: string) {
 
 export default function Notificaciones() {
   const { usuario } = useSesion();
-  const avisos = useDatos<Lista<Notificacion> & { noLeidas: number }>('/notificaciones');
   const [filtro, setFiltro] = useState<Filtro>('todas');
+  // El filtro lo aplica la API: así cuenta en el total y en las páginas.
+  const avisos = useListado<Notificacion>('/notificaciones', { soloNoLeidas: filtro === 'noLeidas' && 'true', grupo: filtro !== 'todas' && filtro !== 'noLeidas' && filtro }, { orden: 'creadaEn', dir: 'desc' });
+  const noLeidas = (avisos.datos as { noLeidas?: number } | null)?.noLeidas ?? 0;
   const router = useRouter();
   const abrir = async (n: Notificacion) => {
     if (!n.leida) await api.post(`/notificaciones/${n.id}/leer`).catch(() => undefined);
@@ -65,7 +68,7 @@ export default function Notificaciones() {
         titulo="Notificaciones"
         subtitulo={`También te las enviamos por email a ${usuario.email}`}
         acciones={
-          avisos.datos?.noLeidas ? (
+          noLeidas ? (
             <Button startIcon={<DoneAllIcon />} onClick={async () => { await api.post('/notificaciones/leer-todas'); void avisos.recargar(); }}>Marcar todas como leídas</Button>
           ) : undefined
         }
@@ -85,7 +88,7 @@ export default function Notificaciones() {
       </Stack>
       <Carga {...avisos}>
         {(d) => {
-          const lista = d.datos.filter((n) => filtro === 'todas' || (filtro === 'noLeidas' ? !n.leida : clase(n.tipo).grupo === filtro));
+          const lista = d.datos;
           return lista.length ? (
             <Card>
               <List disablePadding aria-label="Avisos">
@@ -114,6 +117,7 @@ export default function Notificaciones() {
           );
         }}
       </Carga>
+      <Paginacion listado={avisos} nombre={['aviso', 'avisos']} />
     </>
   );
 }

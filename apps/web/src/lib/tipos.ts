@@ -231,6 +231,14 @@ export interface Lista<T> {
   datos: T[];
 }
 
+/** Respuesta de un listado paginado de la API. */
+export interface Paginada<T> extends Lista<T> {
+  total: number;
+  pagina: number;
+  porPagina: number;
+  paginas: number;
+}
+
 export interface MovimientoStock {
   id: string;
   tipo: 'ALTA' | 'AJUSTE' | 'CUADRE' | 'USO' | 'RECEPCION';

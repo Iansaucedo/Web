@@ -17,15 +17,16 @@ import { Cabecera, Carga, Confirmar } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { TarjetaFichaje } from '../../../../components/Fichar';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useListado } from '../../../../lib/hooks';
+import { Paginacion } from '../../../../components/Paginacion';
 import { dia, FICHAJE, hoy, horasMin, sumarDias } from '../../../../lib/formato';
-import type { Correccion, Jornada, Lista } from '../../../../lib/tipos';
+import type { Correccion, Jornada } from '../../../../lib/tipos';
 
 export default function MiJornada() {
   const hasta = hoy();
   const desde = sumarDias(hasta, -13);
-  const jornadas = useDatos<Lista<Jornada>>(`/jornadas?desde=${desde}&hasta=${hasta}&mias=true`);
-  const correcciones = useDatos<Lista<Correccion>>('/correcciones?mias=true');
+  const jornadas = useListado<Jornada>('/jornadas', { desde, hasta, mias: 'true' }, { prefijo: 'j', porPagina: 25, orden: 'fecha', dir: 'desc' });
+  const correcciones = useListado<Correccion>('/correcciones', { mias: 'true' }, { prefijo: 'c', porPagina: 10, orden: 'creadaEn', dir: 'desc' });
   const [abierto, setAbierto] = useState(false);
   const [f, setF] = useState({ fecha: hasta, tipo: 'SALIDA', hora: '', motivo: '' });
   const { ejecutar, ocupado, error, limpiarError } = useAccion();
@@ -70,6 +71,7 @@ export default function MiJornada() {
                 </TableContainer>
               )}
             </Carga>
+            <Paginacion listado={jornadas} nombre={['día', 'días']} />
           </CardContent>
         </Card>
         <Card>
@@ -88,6 +90,7 @@ export default function MiJornada() {
                 </Stack>
               )}
             </Carga>
+            <Paginacion listado={correcciones} nombre={['solicitud', 'solicitudes']} />
           </CardContent>
         </Card>
       </Stack>

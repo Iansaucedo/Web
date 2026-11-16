@@ -18,15 +18,16 @@ import DownloadIcon from '@mui/icons-material/Download';
 import { Cabecera, Carga, Confirmar, useDialogo } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useListado } from '../../../../lib/hooks';
+import { CeldaOrden, Paginacion } from '../../../../components/Paginacion';
 import { dia, FICHAJE, hoy, horasMin, sumarDias } from '../../../../lib/formato';
-import type { Correccion, Fichaje, Jornada, Lista } from '../../../../lib/tipos';
+import type { Correccion, Fichaje, Jornada } from '../../../../lib/tipos';
 
 export default function Jornadas() {
   const [desde, setDesde] = useState(sumarDias(hoy(), -6));
   const [hasta, setHasta] = useState(hoy());
-  const jornadas = useDatos<Lista<Jornada>>(`/jornadas?desde=${desde}&hasta=${hasta}`);
-  const pendientes = useDatos<Lista<Correccion>>('/correcciones?estado=PENDIENTE');
+  const jornadas = useListado<Jornada>('/jornadas', { desde, hasta }, { prefijo: 'j', orden: 'nombre', dir: 'asc' });
+  const pendientes = useListado<Correccion>('/correcciones', { estado: 'PENDIENTE' }, { prefijo: 'c', porPagina: 10, orden: 'creadaEn', dir: 'asc' });
   const corregir = useDialogo<{ f: Fichaje; j: Jornada }>();
   const [horaNueva, setHoraNueva] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -62,6 +63,7 @@ export default function Jornadas() {
           ) : null
         }
       </Carga>
+      {(pendientes.datos?.paginas ?? 1) > 1 && <Stack sx={{ mt: -2, mb: 3 }}><Paginacion listado={pendientes} nombre={['corrección', 'correcciones']} /></Stack>}
       <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
         <TextField type="date" label="Desde" value={desde} onChange={(e) => e.target.value && setDesde(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ maxWidth: 200 }} />
         <TextField type="date" label="Hasta" value={hasta} onChange={(e) => e.target.value && setHasta(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ maxWidth: 200 }} />
@@ -71,7 +73,7 @@ export default function Jornadas() {
           <Card>
             <TableContainer>
               <Table size="small">
-                <TableHead><TableRow><TableCell>Empleado</TableCell><TableCell>Día</TableCell><TableCell>Fichajes (pulsa para corregir)</TableCell><TableCell>Pausas</TableCell><TableCell>Trabajado</TableCell><TableCell /></TableRow></TableHead>
+                <TableHead><TableRow><CeldaOrden listado={jornadas} campo="nombre">Empleado</CeldaOrden><CeldaOrden listado={jornadas} campo="fecha" dirInicial="desc">Día</CeldaOrden><TableCell>Fichajes (pulsa para corregir)</TableCell><TableCell>Pausas</TableCell><TableCell>Trabajado</TableCell><TableCell /></TableRow></TableHead>
                 <TableBody>
                   {d.datos.map((j) => (
                     <TableRow key={`${j.empleadoId}${j.fecha}`}>
@@ -96,6 +98,7 @@ export default function Jornadas() {
           </Card>
         )}
       </Carga>
+      <Paginacion listado={jornadas} nombre={['jornada', 'jornadas']} />
       <Confirmar
         abierto={corregir.abierto}
         titulo="Corregir fichaje"

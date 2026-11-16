@@ -11,16 +11,15 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import { Cabecera, Carga } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
-import { useDatos } from '../../../../lib/hooks';
+import { useListado } from '../../../../lib/hooks';
+import { Paginacion, CeldaOrden } from '../../../../components/Paginacion';
 import { ESTADO_ORDEN, fechaHora } from '../../../../lib/formato';
-import type { Lista, OrdenResumen } from '../../../../lib/tipos';
+import type { OrdenResumen } from '../../../../lib/tipos';
 
 /** Órdenes en las que el mecánico ha registrado trabajo, para consultar qué se hizo. */
 export default function Historial() {
   const [q, setQ] = useState('');
-  const params = new URLSearchParams({ trabajadas: 'true' });
-  if (q.trim()) params.set('q', q.trim());
-  const ordenes = useDatos<Lista<OrdenResumen>>(`/ordenes?${params}`);
+  const ordenes = useListado<OrdenResumen>('/ordenes', { trabajadas: 'true', q: q.trim() }, { orden: 'abiertaEn', dir: 'desc' });
   return (
     <>
       <Cabecera titulo="Historial" subtitulo="Órdenes en las que has registrado trabajo." />
@@ -31,7 +30,13 @@ export default function Historial() {
             <TableContainer>
               <Table aria-label="Historial de órdenes">
                 <TableHead>
-                  <TableRow><TableCell>Orden</TableCell><TableCell>Vehículo</TableCell><TableCell>Cliente</TableCell><TableCell>Entrada</TableCell><TableCell>Estado</TableCell></TableRow>
+                  <TableRow>
+                    <CeldaOrden listado={ordenes} campo="numero" dirInicial="desc">Orden</CeldaOrden>
+                    <CeldaOrden listado={ordenes} campo="matricula">Vehículo</CeldaOrden>
+                    <TableCell>Cliente</TableCell>
+                    <CeldaOrden listado={ordenes} campo="abiertaEn" dirInicial="desc">Entrada</CeldaOrden>
+                    <CeldaOrden listado={ordenes} campo="estado">Estado</CeldaOrden>
+                  </TableRow>
                 </TableHead>
                 <TableBody>
                   {d.datos.map((o) => (
@@ -50,6 +55,7 @@ export default function Historial() {
           </Card>
         )}
       </Carga>
+      <Paginacion listado={ordenes} nombre={['orden', 'órdenes']} />
     </>
   );
 }

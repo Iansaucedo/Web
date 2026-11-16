@@ -27,7 +27,8 @@ import { ChipEstado } from './ChipEstado';
 import { LineaTiempo } from './LineaTiempo';
 import { useSesion } from './Sesion';
 import { api, mensajeError } from '../lib/api';
-import { useAccion, useDatos } from '../lib/hooks';
+import { useAccion, useDatos, useListado } from '../lib/hooks';
+import Autocomplete from '@mui/material/Autocomplete';
 import { ESTADO_ORDEN, ESTADO_PEDIDO, euros, fechaHora, horasMin } from '../lib/formato';
 import type { Lista, OrdenDetalle, Partida, Pieza, Puesto } from '../lib/tipos';
 
@@ -131,13 +132,19 @@ function NuevaSolicitud({ ordenId, tarifa, abierto, onCerrar, onHecho }: { orden
 
 function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Partida | null; abierto: boolean; onCerrar: () => void; onHecho: Recargar }) {
   const [tab, setTab] = useState(0);
-  const piezas = useDatos<Lista<Pieza>>(abierto ? '/piezas' : null);
-  const [piezaId, setPiezaId] = useState('');
+  // Buscador sobre el catálogo paginado de la API: con cientos de piezas no caben todas en un desplegable.
+  const [pieza, setPieza] = useState<Pieza | null>(null);
+  const [busqueda, setBusqueda] = useState('');
+  const etiqueta = (p: Pieza) => `${p.nombre} · ${p.referencia}`;
+  // Con una pieza elegida, el texto del campo es su etiqueta: no se usa como búsqueda.
+  const q = pieza && busqueda === etiqueta(pieza) ? '' : busqueda.trim();
+  const piezas = useListado<Pieza>(abierto ? '/piezas' : null, { q }, { enUrl: false, porPagina: 25, orden: 'nombre', dir: 'asc' });
+  const opciones = [...(pieza && !piezas.datos?.datos.some((p) => p.id === pieza.id) ? [pieza] : []), ...(piezas.datos?.datos ?? [])];
+  const piezaId = pieza?.id ?? '';
   const [cantidad, setCantidad] = useState('1');
   const [descripcion, setDescripcion] = useState('');
   const [destino, setDestino] = useState('DESECHADA');
   const { ejecutar, ocupado, error, limpiarError } = useAccion();
-  const pieza = piezas.datos?.datos.find((p) => p.id === piezaId);
   const n = Number(cantidad);
   const guardar = async () => {
     const ruta = ['piezas-usadas', 'piezas-quitadas', 'pedidos'][tab];
@@ -145,7 +152,8 @@ function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Part
       tab === 0 ? { piezaId, cantidad: n } : tab === 1 ? { descripcion, cantidad: n, destino } : piezaId ? { piezaId, cantidad: n } : { descripcionLibre: descripcion, cantidad: n };
     const ok = await ejecutar((clave) => api.post(`/partidas/${partida!.id}/${ruta}`, cuerpo, { claveIdempotencia: clave }), ['Pieza registrada', 'Pieza retirada registrada', 'Pedido enviado al jefe'][tab]);
     if (ok) {
-      setPiezaId('');
+      setPieza(null);
+      setBusqueda('');
       setDescripcion('');
       setCantidad('1');
       onCerrar();
@@ -161,14 +169,38 @@ function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Part
         <Tab label="Pedir" />
       </Tabs>
       {tab !== 1 && (
-        <TextField select label={tab === 2 ? 'Pieza del catálogo (opcional)' : 'Pieza'} value={piezaId} onChange={(e) => setPiezaId(e.target.value)}>
-          {tab === 2 && <MenuItem value="">No está en el catálogo</MenuItem>}
-          {piezas.datos?.datos.map((p) => (
-            <MenuItem key={p.id} value={p.id} disabled={tab === 0 && p.stock === 0}>
+        <Autocomplete
+          options={opciones}
+          value={pieza}
+          onChange={(_, v) => setPieza(v)}
+          inputValue={busqueda}
+          onInputChange={(_, v) => setBusqueda(v)}
+          filterOptions={(x) => x}
+          getOptionLabel={etiqueta}
+          getOptionDisabled={(p) => tab === 0 && p.stock === 0}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          loading={piezas.cargando}
+          loadingText="Buscando…"
+          noOptionsText="Ninguna pieza coincide"
+          renderOption={({ key, ...props }, p) => (
+            <li key={key} {...props}>
               {p.nombre} · {p.referencia} · {p.stock} en stock · {euros(p.precioCentimos)}
-            </MenuItem>
-          ))}
-        </TextField>
+            </li>
+          )}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={tab === 2 ? 'Pieza del catálogo (opcional)' : 'Pieza'}
+              helperText={
+                piezas.datos && piezas.datos.total > piezas.datos.datos.length
+                  ? `Se muestran ${piezas.datos.datos.length} de ${piezas.datos.total}: escribe la referencia o el nombre para buscar`
+                  : tab === 2
+                    ? 'Déjalo vacío si la pieza no está en el catálogo'
+                    : undefined
+              }
+            />
+          )}
+        />
       )}
       {(tab === 1 || (tab === 2 && !piezaId)) && <TextField label={tab === 1 ? '¿Qué has quitado?' : 'Describe la pieza'} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />}
       <TextField label="Cantidad" type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} inputProps={{ min: 1, max: 100 }} error={tab === 0 && Boolean(pieza) && pieza!.stock < n} helperText={tab === 0 && pieza && pieza.stock < n ? `Solo hay ${pieza.stock}. Pídela en la pestaña «Pedir»` : undefined} />

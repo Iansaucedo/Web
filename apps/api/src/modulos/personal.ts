@@ -13,6 +13,7 @@ import { avisarRoles, emailSinCuenta } from '../servicios/avisos';
 import { diaLargo, numeroOrden, ROL_TEXTO } from '../emails/formato';
 import { Dia, Id, Instante, Ok, ParamId, Rol, TextoCorto, lista } from './esquemas';
 import { dejarConstancia } from '../servicios/constancias';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 
 // ─── Puestos ─────────────────────────────────────────────────────────
 
@@ -209,7 +210,10 @@ definir({
   resumen: 'Ausencias en un rango',
   descripcion: 'Un elemento por día de ausencia.',
   acceso: GESTION,
-  query: z.object({ desde: Dia, hasta: Dia }),
+  query: z
+    .object({ desde: Dia, hasta: Dia })
+    .refine((q) => q.desde <= q.hasta, { message: '`desde` debe ser anterior o igual a `hasta`', path: ['hasta'] })
+    .refine((q) => diasEntre(q.desde, q.hasta).length <= 366, { message: 'Como máximo un año', path: ['hasta'] }),
   respuesta: lista(AusenciaSchema),
   manejador: async ({ query }) => {
     const a = await prisma.ausencia.findMany({ where: { fecha: { gte: fechaDb(query.desde), lte: fechaDb(query.hasta) } }, include: { empleado: { include: { usuario: true } } }, orderBy: [{ fecha: 'asc' }] });
@@ -308,8 +312,13 @@ definir({
   etiqueta: 'Personal',
   resumen: 'Invitaciones enviadas',
   acceso: GESTION,
-  respuesta: lista(InvitacionSchema),
-  manejador: async () => ({ datos: (await prisma.invitacion.findMany({ include: incluirInv, orderBy: { creadaEn: 'desc' } })).map(aInv) }),
+  query: z.object(consultaPaginada(['creadaEn', 'email'])),
+  respuesta: listaPaginada(InvitacionSchema),
+  manejador: async ({ query }) => {
+    const orderBy: Prisma.InvitacionOrderByWithRelationInput[] = ordenar(query, { creadaEn: (dir) => ({ creadaEn: dir }), email: (dir) => ({ email: dir }) }, { orden: 'creadaEn', dir: 'desc' });
+    const [total, inv] = await Promise.all([prisma.invitacion.count(), prisma.invitacion.findMany({ include: incluirInv, orderBy, ...saltoYTope(query) })]);
+    return pagina(inv.map(aInv), total, query);
+  },
 });
 
 definir({
@@ -371,13 +380,19 @@ definir({
   etiqueta: 'Usuarios',
   resumen: 'Todos los usuarios',
   acceso: ['DUENO'],
-  query: z.object({ rol: Rol.optional(), q: z.string().max(60).optional() }),
-  respuesta: lista(UsuarioAdminSchema),
+  query: z.object({ rol: Rol.optional(), q: z.string().max(60).optional(), activo: z.enum(['true', 'false']).optional(), ...consultaPaginada(['nombre', 'email', 'rol', 'creadoEn']) }),
+  respuesta: listaPaginada(UsuarioAdminSchema),
   manejador: async ({ query }) => {
     const where: Prisma.UsuarioWhereInput = query.rol ? { rol: query.rol } : {};
+    if (query.activo) where.activo = query.activo === 'true';
     if (query.q) where.OR = [{ email: { contains: query.q, mode: 'insensitive' } }, { nombre: { contains: query.q, mode: 'insensitive' } }];
-    const u = await prisma.usuario.findMany({ where, orderBy: { nombre: 'asc' }, take: 500 });
-    return { datos: u.map(({ id, email, nombre, rol, activo, creadoEn }) => ({ id, email, nombre, rol, activo, creadoEn })) };
+    const orderBy: Prisma.UsuarioOrderByWithRelationInput[] = ordenar(
+      query,
+      { nombre: (dir) => ({ nombre: dir }), email: (dir) => ({ email: dir }), rol: (dir) => ({ rol: dir }), creadoEn: (dir) => ({ creadoEn: dir }) },
+      { orden: 'nombre', dir: 'asc' },
+    );
+    const [total, u] = await Promise.all([prisma.usuario.count({ where }), prisma.usuario.findMany({ where, orderBy, ...saltoYTope(query) })]);
+    return pagina(u.map(({ id, email, nombre, rol, activo, creadoEn }) => ({ id, email, nombre, rol, activo, creadoEn })), total, query);
   },
 });
 
@@ -429,21 +444,25 @@ definir({
   etiqueta: 'Usuarios',
   resumen: 'Clientes (particulares y empresas)',
   acceso: GESTION,
-  query: z.object({ tipo: z.enum(['INDIVIDUAL', 'EMPRESA']).optional(), q: z.string().max(60).optional() }),
-  respuesta: lista(
+  query: z.object({ tipo: z.enum(['INDIVIDUAL', 'EMPRESA']).optional(), q: z.string().max(60).optional(), ...consultaPaginada(['nombre', 'tipo']) }),
+  respuesta: listaPaginada(
     z.object({ id: Id, nombre: z.string(), email: z.string(), telefono: z.string(), tipo: z.enum(['INDIVIDUAL', 'EMPRESA']), razonSocial: z.string().nullable(), nif: z.string().nullable(), vehiculos: z.number().int(), ordenesAbiertas: z.number().int() }).openapi('ClienteListado'),
   ),
   manejador: async ({ query }) => {
     const where: Prisma.ClienteWhereInput = query.tipo ? { tipo: query.tipo } : {};
     if (query.q) where.OR = [{ razonSocial: { contains: query.q, mode: 'insensitive' } }, { usuario: { nombre: { contains: query.q, mode: 'insensitive' } } }, { nif: { contains: query.q.toUpperCase() } }];
-    const cs = await prisma.cliente.findMany({
-      where,
-      include: { usuario: true, _count: { select: { vehiculos: true } }, vehiculos: { include: { ordenes: { where: { estado: { not: 'ENTREGADA' } }, select: { id: true } } } } },
-      orderBy: { usuario: { nombre: 'asc' } },
-      take: 300,
-    });
-    return {
-      datos: cs.map((c) => ({
+    const orderBy: Prisma.ClienteOrderByWithRelationInput[] = ordenar(query, { nombre: (dir) => ({ usuario: { nombre: dir } }), tipo: (dir) => ({ tipo: dir }) }, { orden: 'nombre', dir: 'asc' });
+    const [total, cs] = await Promise.all([
+      prisma.cliente.count({ where }),
+      prisma.cliente.findMany({
+        where,
+        include: { usuario: true, _count: { select: { vehiculos: true } }, vehiculos: { include: { ordenes: { where: { estado: { not: 'ENTREGADA' } }, select: { id: true } } } } },
+        orderBy,
+        ...saltoYTope(query),
+      }),
+    ]);
+    return pagina(
+      cs.map((c) => ({
         id: c.id,
         nombre: c.usuario.nombre,
         email: c.usuario.email,
@@ -454,7 +473,9 @@ definir({
         vehiculos: c._count.vehiculos,
         ordenesAbiertas: c.vehiculos.reduce((s, v) => s + v.ordenes.length, 0),
       })),
-    };
+      total,
+      query,
+    );
   },
 });
 
@@ -468,14 +489,20 @@ definir({
   resumen: 'Constancias de eliminación',
   descripcion: 'Copia de cada registro borrado o dado de baja, con quién, cuándo y por qué. Solo lectura.',
   acceso: ['DUENO'],
-  query: z.object({ entidad: z.string().max(40).optional() }),
-  respuesta: lista(
+  query: z.object({ entidad: z.string().max(40).optional(), ...consultaPaginada(['fecha', 'entidad']) }),
+  respuesta: listaPaginada(
     z.object({ id: Id, entidad: z.string(), entidadId: Id, modo: z.enum(['BORRADO', 'BAJA']), datos: z.record(z.string(), z.unknown()), motivo: z.string().nullable(), usuario: z.string(), fecha: Instante }).openapi('Constancia'),
   ),
   manejador: async ({ query }) => {
-    const r = await prisma.registroEliminacion.findMany({ where: query.entidad ? { entidad: query.entidad } : {}, orderBy: { fecha: 'desc' }, take: 300 });
+    const where = query.entidad ? { entidad: query.entidad } : {};
+    const orderBy: Prisma.RegistroEliminacionOrderByWithRelationInput[] = ordenar(query, { fecha: (dir) => ({ fecha: dir }), entidad: (dir) => ({ entidad: dir }) }, { orden: 'fecha', dir: 'desc' });
+    const [total, r] = await Promise.all([prisma.registroEliminacion.count({ where }), prisma.registroEliminacion.findMany({ where, orderBy, ...saltoYTope(query) })]);
     const usuarios = new Map((await prisma.usuario.findMany({ where: { id: { in: [...new Set(r.map((x) => x.usuarioId))] } } })).map((u) => [u.id, u.nombre]));
-    return { datos: r.map((x) => ({ id: x.id, entidad: x.entidad, entidadId: x.entidadId, modo: x.modo, datos: x.datos as Record<string, unknown>, motivo: x.motivo, usuario: usuarios.get(x.usuarioId) ?? '—', fecha: x.fecha })) };
+    return pagina(
+      r.map((x) => ({ id: x.id, entidad: x.entidad, entidadId: x.entidadId, modo: x.modo, datos: x.datos as Record<string, unknown>, motivo: x.motivo, usuario: usuarios.get(x.usuarioId) ?? '—', fecha: x.fecha })),
+      total,
+      query,
+    );
   },
 });
 

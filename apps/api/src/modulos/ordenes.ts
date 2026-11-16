@@ -18,7 +18,8 @@ import { adjuntarFotos, MAX_FOTOS_POR_TRABAJO, urlFoto } from '../servicios/foto
 import { colocarEnPuesto } from './citas';
 import { euros, fechaLarga, hora, numeroOrden } from '../emails/formato';
 import { fechaDb, diaLocal } from '../lib/fechas';
-import { Centimos, Id, Instante, ParamId, TextoLargo, lista } from './esquemas';
+import { Centimos, Id, Instante, ParamId, TextoLargo } from './esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 import { EstadoOrden as EstadoOrdenSchema, OrdenResumenSchema, aOrdenResumen, incluirResumen } from './ordenes-esquemas';
 
 const Importe = z.object({ base: Centimos, iva: Centimos, total: Centimos });
@@ -146,8 +147,9 @@ definir({
     mias: z.enum(['true', 'false']).optional(),
     trabajadas: z.enum(['true', 'false']).optional(),
     q: z.string().max(60).optional(),
+    ...consultaPaginada(['abiertaEn', 'numero', 'estado', 'entregaEstimada', 'matricula']),
   }),
-  respuesta: lista(OrdenResumenSchema),
+  respuesta: listaPaginada(OrdenResumenSchema),
   manejador: async ({ usuario, query }) => {
     const where: Prisma.OrdenWhereInput = esPersonal(usuario) ? {} : { cita: { cliente: { usuarioId: usuario.id } } };
     if (query.estado) where.estado = query.estado;
@@ -167,8 +169,19 @@ definir({
       where.OR = [{ vehiculo: { matricula: { contains: q.replace(/[\s-]/g, '').toUpperCase() } } }, { cita: { cliente: { usuario: { nombre: { contains: q, mode: 'insensitive' } } } } }];
       if (/^(OR-)?\d+$/i.test(q)) where.OR.push({ numero: Number(q.replace(/\D/g, '')) });
     }
-    const datos = await prisma.orden.findMany({ where, include: incluirResumen, orderBy: { abiertaEn: 'desc' }, take: 200 });
-    return { datos: datos.map(aOrdenResumen) };
+    const orderBy: Prisma.OrdenOrderByWithRelationInput[] = ordenar(
+      query,
+      {
+        abiertaEn: (dir) => ({ abiertaEn: dir }),
+        numero: (dir) => ({ numero: dir }),
+        estado: (dir) => ({ estado: dir }),
+        entregaEstimada: (dir) => ({ entregaEstimada: { sort: dir, nulls: 'last' } }),
+        matricula: (dir) => ({ vehiculo: { matricula: dir } }),
+      },
+      { orden: 'abiertaEn', dir: 'desc' },
+    );
+    const [total, datos] = await Promise.all([prisma.orden.count({ where }), prisma.orden.findMany({ where, include: incluirResumen, orderBy, ...saltoYTope(query) })]);
+    return pagina(datos.map(aOrdenResumen), total, query);
   },
 });
 

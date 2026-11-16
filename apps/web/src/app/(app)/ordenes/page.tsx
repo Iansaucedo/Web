@@ -16,19 +16,22 @@ import CloseIcon from '@mui/icons-material/Close';
 import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../components/Comunes';
 import { ChipEstado } from '../../../components/ChipEstado';
 import { api } from '../../../lib/api';
-import { useAccion, useDatos } from '../../../lib/hooks';
+import { useAccion, useDatos, useListado } from '../../../lib/hooks';
+import { Paginacion } from '../../../components/Paginacion';
 import { ESTADO_CITA, ESTADO_ORDEN, diaLargo, fechaHora } from '../../../lib/formato';
 import type { Cita, Lista, OrdenResumen } from '../../../lib/tipos';
 
 export default function MisOrdenes() {
-  const ordenes = useDatos<Lista<OrdenResumen>>('/ordenes');
-  const citas = useDatos<Lista<Cita>>('/citas');
+  const ordenes = useListado<OrdenResumen>('/ordenes', {}, { prefijo: 'o', porPagina: 10, orden: 'abiertaEn', dir: 'desc' });
+  const citas = useListado<Cita>('/citas', { activas: 'true' }, { prefijo: 'c', porPagina: 10, orden: 'inicio', dir: 'asc' });
+  // Aparte del listado: una orden que espera aprobación avisa aunque esté en otra página.
+  const pendientes = useDatos<Lista<OrdenResumen>>('/ordenes?estado=ESPERANDO_AUTORIZACION&porPagina=100');
   const cancelar = useDialogo<Cita>();
   const [motivo, setMotivo] = useState('');
   const { ejecutar, ocupado, error, limpiarError } = useAccion();
 
-  const proximas = citas.datos?.datos.filter((c) => c.estado === 'PENDIENTE' || c.estado === 'CONFIRMADA') ?? [];
-  const porResponder = ordenes.datos?.datos.filter((o) => o.estado === 'ESPERANDO_AUTORIZACION') ?? [];
+  const proximas = citas.datos?.datos ?? [];
+  const porResponder = pendientes.datos?.datos ?? [];
 
   const confirmarCancelacion = async () => {
     const ok = await ejecutar(() => api.post(`/citas/${cancelar.valor!.id}/cancelar`, motivo ? { motivo } : {}), 'Cita cancelada. La franja queda libre');
@@ -77,6 +80,7 @@ export default function MisOrdenes() {
           )
         }
       </Carga>
+      {proximas.length > 0 && <Stack sx={{ mt: -2, mb: 4 }}><Paginacion listado={citas} nombre={['cita', 'citas']} /></Stack>}
 
       <Typography variant="h5" component="h2" sx={{ mb: 2 }}>Reparaciones</Typography>
       <Carga {...ordenes}>
@@ -110,6 +114,7 @@ export default function MisOrdenes() {
           )
         }
       </Carga>
+      <Paginacion listado={ordenes} nombre={['reparación', 'reparaciones']} ordenes={[{ valor: 'abiertaEn', texto: 'Fecha de entrada', dir: 'desc' }, { valor: 'estado', texto: 'Estado' }, { valor: 'matricula', texto: 'Matrícula' }]} />
 
       <Confirmar
         abierto={cancelar.abierto}

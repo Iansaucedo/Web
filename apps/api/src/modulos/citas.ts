@@ -13,8 +13,9 @@ import { franjasDelDia, libresEnFranja, ocupacionDia, validarFranja, esLaborable
 import { avisar, avisarRoles } from '../servicios/avisos';
 import { registrarEvento } from '../servicios/eventos';
 import { fechaLarga, hora, numeroOrden } from '../emails/formato';
-import { Dia, Id, Instante, ParamId, TextoLargo, lista } from './esquemas';
+import { Dia, Id, Instante, ParamId, TextoLargo } from './esquemas';
 import { OrdenResumenSchema, aOrdenResumen } from './ordenes-esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 
 /** Cada cliente, como mucho 20 al día: cada una envía avisos y emails al taller. */
 const LIMITE_CITAS = { grupo: 'citas', maximo: 20 };
@@ -148,9 +149,16 @@ definir({
   ruta: '/citas',
   etiqueta: 'Citas',
   resumen: 'Listar citas',
-  descripcion: 'El cliente ve las suyas. El personal ve todas, filtrando por día (`fecha`) o rango, y por estado.',
-  query: z.object({ fecha: Dia.optional(), desde: Dia.optional(), hasta: Dia.optional(), estado: EstadoCita.optional() }),
-  respuesta: lista(CitaSchema),
+  descripcion: 'El cliente ve las suyas (por defecto, las más recientes primero). El personal ve todas (por defecto, por hora), filtrando por día (`fecha`) o rango, y por estado. Paginado.',
+  query: z.object({
+    fecha: Dia.optional(),
+    desde: Dia.optional(),
+    hasta: Dia.optional(),
+    estado: EstadoCita.optional(),
+    activas: z.enum(['true', 'false']).optional().openapi({ description: '`true`: solo pendientes y confirmadas' }),
+    ...consultaPaginada(['inicio', 'estado', 'creadaEn']),
+  }),
+  respuesta: listaPaginada(CitaSchema),
   manejador: async ({ usuario, query }) => {
     const c = await obtenerConfig(prisma);
     const where: Prisma.CitaWhereInput = esPersonal(usuario) ? {} : { cliente: { usuarioId: usuario.id } };
@@ -163,8 +171,14 @@ definir({
       };
     }
     if (query.estado) where.estado = query.estado;
-    const citas = await prisma.cita.findMany({ where, include: incluir, orderBy: { inicio: esPersonal(usuario) ? 'asc' : 'desc' }, take: 300 });
-    return { datos: await Promise.all(citas.map((x) => aCita(x, c))) };
+    else if (query.activas === 'true') where.estado = { in: ['PENDIENTE', 'CONFIRMADA'] };
+    const orderBy: Prisma.CitaOrderByWithRelationInput[] = ordenar(
+      query,
+      { inicio: (dir) => ({ inicio: dir }), estado: (dir) => ({ estado: dir }), creadaEn: (dir) => ({ creadaEn: dir }) },
+      { orden: 'inicio', dir: esPersonal(usuario) ? 'asc' : 'desc' },
+    );
+    const [total, citas] = await Promise.all([prisma.cita.count({ where }), prisma.cita.findMany({ where, include: incluir, orderBy, ...saltoYTope(query) })]);
+    return pagina(await Promise.all(citas.map((x) => aCita(x, c))), total, query);
   },
 });
 
