@@ -17,6 +17,11 @@ export async function resolverUsuario(emailBruto: string, nombre: string, google
   const email = emailBruto.trim().toLowerCase();
   const existente = await prisma.usuario.findUnique({ where: { email } });
   if (existente) {
+    // La cuenta es de una identidad de Google, no de un email: si el email ya está ligado a otra cuenta de Google
+    // (un email de empresa reasignado a otra persona, por ejemplo), no se entra en la cuenta anterior ni en su historial.
+    if (googleId && existente.googleId && existente.googleId !== googleId) {
+      throw new ErrorApp(403, 'OTRA_CUENTA_GOOGLE', 'Ese email está ligado a otra cuenta de Google. Habla con el taller');
+    }
     // Autobaja dentro del plazo: puede entrar, pero solo verá la página para recuperar la cuenta o salir.
     if (!existente.activo && existente.bajaSolicitadaEn && !existente.desvinculadoEn) return existente;
     if (!existente.activo) throw new ErrorApp(403, 'CUENTA_DESACTIVADA', 'Tu cuenta está dada de baja. Habla con el taller');

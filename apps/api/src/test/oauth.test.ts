@@ -118,4 +118,23 @@ describe('acceso con Google', () => {
     }
     expect(await prisma.usuario.count()).toBe(0);
   });
+
+  it('QA: la cuenta es de la identidad de Google, no del email: otra cuenta de Google con el mismo email no entra', async () => {
+    const volver = async () => {
+      const { estado, cookie } = await empezar();
+      return peticion(app).get(`/api/auth/google/callback?code=x&state=${estado}`).set('Cookie', cookie!);
+    };
+    expect((await volver()).headers.location).toBe('/perfil');
+    expect((await prisma.usuario.findUniqueOrThrow({ where: { email: 'ana@gmail.test' } })).googleId).toBe('g-123');
+    // El mismo email llega ahora desde otra cuenta de Google (p. ej. un email de empresa reasignado).
+    googleResponde({ ...perfilGoogle(true), id: 'g-otra-persona' });
+    const r = await volver();
+    expect(r.headers.location).toBe('/login?error=OTRA_CUENTA_GOOGLE');
+    expect(([] as string[]).concat(r.headers['set-cookie'] ?? []).some((c) => c.startsWith('taller_sesion='))).toBe(false);
+    // Una cuenta creada sin Google (invitación, dueño del seed) se liga a la primera cuenta de Google que entra.
+    await prisma.usuario.create({ data: { email: 'jefe@taller.test', nombre: 'Jefe', rol: 'JEFE' } });
+    googleResponde({ id: 'g-jefe', displayName: 'Jefe', emails: [{ value: 'jefe@taller.test', verified: true }], provider: 'google' });
+    expect((await volver()).headers.location).toBe('/');
+    expect((await prisma.usuario.findUniqueOrThrow({ where: { email: 'jefe@taller.test' } })).googleId).toBe('g-jefe');
+  });
 });

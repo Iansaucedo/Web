@@ -22,6 +22,7 @@ import { api, mensajeError } from '../../lib/api';
 const ERRORES: Record<string, string> = {
   CUENTA_DESACTIVADA: 'Tu cuenta está dada de baja. Habla con el taller.',
   SIN_EMAIL: 'Google no nos ha dado un email verificado.',
+  OTRA_CUENTA_GOOGLE: 'Ese email ya está ligado a otra cuenta de Google. Habla con el taller.',
   GOOGLE: 'No se ha podido entrar con Google. Inténtalo de nuevo.',
 };
 const VENTAJAS = [
