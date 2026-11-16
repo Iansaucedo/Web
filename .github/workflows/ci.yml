@@ -1,0 +1,95 @@
+name: CI (tipos, lint y tests)
+
+# En cada push y PR. Los workflows de despliegue la llaman antes de construir nada (workflow_call):
+# si un test falla, no se despliega.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22.x'
+
+jobs:
+  api:
+    name: Tipos, lint y tests de la API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: taller
+          POSTGRES_PASSWORD: taller
+          POSTGRES_DB: taller_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U taller -d taller_test"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://taller:taller@localhost:5432/taller_test
+      TEST_DATABASE_URL: postgresql://taller:taller@localhost:5432/taller_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - name: Migraciones (y comprobar que el esquema coincide con ellas)
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run typecheck -w api
+      - run: npm run typecheck -w web
+      - run: npm run lint
+      - run: npm test
+      - name: Dependencias de producción sin vulnerabilidades conocidas
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: E2E (Playwright)
+    needs: api
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: taller
+          POSTGRES_PASSWORD: taller
+          POSTGRES_DB: taller_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U taller -d taller_e2e"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    env:
+      CI: 'true'
+      E2E_DATABASE_URL: postgresql://taller:taller@localhost:5432/taller_e2e
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - name: Informe de Playwright si algo falla
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-informe
+          path: e2e-informe
+          retention-days: 7

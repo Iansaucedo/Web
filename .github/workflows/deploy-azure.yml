@@ -1,9 +1,12 @@
 name: Despliegue en Azure (App Service)
 
 on:
-  push:
-    branches:
-      - main
+  # Solo cuando la CI ha pasado en main (tipos, lint, tests de la API y E2E). Así no se despliega código roto.
+  workflow_run:
+    workflows: ['CI (tipos, lint y tests)']
+    types: [completed]
+    branches: [main]
+  # A mano: primero se ejecuta la CI (job `tests`).
   workflow_dispatch:
 
 permissions:
@@ -13,16 +16,25 @@ env:
   NODE_VERSION: '22.x'
 
 jobs:
+  tests:
+    name: CI antes de desplegar (ejecución manual)
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'Iansaucedo/Web'
+    uses: ./.github/workflows/ci.yml
+
   # -------------------------------------------------------------
   # 1. Compilación, Pruebas y Empaquetado
   # -------------------------------------------------------------
   build:
     name: Build & Package
-    if: github.repository == 'Iansaucedo/Web'
+    needs: tests
+    if: always() && github.repository == 'Iansaucedo/Web' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || needs.tests.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # El commit que pasó la CI (no el último de main si llegó otro entretanto).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configurar Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -86,7 +98,7 @@ jobs:
   # 2. Migración de Base de Datos en Azure PostgreSQL
   # -------------------------------------------------------------
   migrate-database:
-    name: Migrar Base de Datos Azure
+    name: Migrar Base de Datos
     needs: build
     runs-on: ubuntu-latest
     env:
@@ -101,6 +113,8 @@ jobs:
       - name: Checkout del repositorio
         if: steps.check.outputs.has_db == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configurar Node.js ${{ env.NODE_VERSION }}
         if: steps.check.outputs.has_db == 'true'
@@ -112,7 +126,7 @@ jobs:
         if: steps.check.outputs.has_db == 'true'
         run: npm install -g prisma@5.22.0
 
-      - name: Ejecutar migraciones en Azure PostgreSQL
+      - name: Ejecutar migraciones
         if: steps.check.outputs.has_db == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

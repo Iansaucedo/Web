@@ -167,7 +167,7 @@ definir({
     ];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="jornadas-${query.desde}-${query.hasta}.csv"`);
-    res.send(`﻿${lineas.join('\r\n')}\r\n`);
+    res.send(`\uFEFF${lineas.join('\r\n')}\r\n`);
   },
 });
 

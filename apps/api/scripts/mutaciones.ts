@@ -66,6 +66,7 @@ for (const [i, m] of M.entries()) {
   try {
     writeFileSync(ruta, original.replace(m.buscar, m.poner));
     const r = spawnSync('npx', ['vitest', 'run', ...m.tests], { cwd: raiz, encoding: 'utf8' });
+    // eslint-disable-next-line no-control-regex -- quita los colores ANSI (ESC[…m) de la salida de vitest
     const resumen = /Tests\s+(.+)/.exec(r.stdout)?.[1]?.replace(/\x1b\[[0-9;]*m/g, '').replace(/\|/g, '·').trim() ?? '¿?';
     const detectada = r.status !== 0;
     if (!detectada) sobreviven++;

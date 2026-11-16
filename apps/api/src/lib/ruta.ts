@@ -92,9 +92,9 @@ const definidas: DefRuta<any, any, any>[] = [];
  * la monta en Express y la documenta en OpenAPI. Así no puede existir una ruta sin documentar.
  */
 export function definir<
-  P extends z.ZodType = z.ZodObject<{}>,
-  Q extends z.ZodType = z.ZodObject<{}>,
-  B extends z.ZodType = z.ZodObject<{}>,
+  P extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
+  Q extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
+  B extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
 >(def: DefRuta<P, Q, B>): void {
   definidas.push(def);
 }

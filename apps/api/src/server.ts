@@ -23,7 +23,9 @@ try {
 } catch {
   try {
     process.loadEnvFile('../../.env');
-  } catch {}
+  } catch {
+    // Sin .env: las variables vienen del entorno (producción, CI).
+  }
 }
 
 const puerto = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
