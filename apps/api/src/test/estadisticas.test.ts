@@ -23,6 +23,15 @@ describe('estadísticas del dueño', () => {
     expect(r.body.porDia.find((d: { fecha: string }) => d.fecha === '2026-11-09')).toMatchObject({ facturadoCentimos: 4840, citas: 1 });
   });
 
+  it('QA: una orden rechazada sigue contando como rechazada después de entregar el vehículo', async () => {
+    const e = await ordenEnReparacion(['RECHAZADA', 'RECHAZADA']);
+    const dueno = await entrar('dueno@taller.test', 'DUENO');
+    const ver = async () => (await dueno.get('/api/estadisticas?desde=2026-11-01&hasta=2026-11-30')).body.ordenes;
+    expect((await ver()).rechazadas).toBe(1);
+    expect((await e.jefe.post(`/api/ordenes/${e.orden.id}/entregar`).send({ kmSalida: 98500 })).status).toBe(200);
+    expect(await ver()).toMatchObject({ rechazadas: 1, completadas: 0 });
+  });
+
   it('solo el dueño las ve', async () => {
     const jefe = await entrar('jefe@taller.test', 'JEFE');
     expect((await jefe.get('/api/estadisticas?desde=2026-11-01&hasta=2026-11-30')).status).toBe(403);

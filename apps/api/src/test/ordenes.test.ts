@@ -265,7 +265,7 @@ describe('completar, factura y entrega', () => {
     expect(r.status).toBe(200);
     expect(r.body.estado).toBe('COMPLETADA');
     const detalle = (await ana.get(`/api/ordenes/${orden.id}`)).body;
-    expect(detalle.factura).toEqual({ base: 5600 + 6000, iva: 2436, total: 14036, lineas: expect.any(Array) });
+    expect(detalle.factura).toEqual({ codigo: 'F-2026-0001', base: 5600 + 6000, iva: 2436, total: 14036, lineas: expect.any(Array) });
     const email = (await emailsA('ana@cliente.test')).find((e) => e.plantilla === 'ORDEN_COMPLETADA');
     expect(email?.adjuntoFacturaOrdenId).toBe(orden.id);
     const pdf = await ana.get(`/api/ordenes/${orden.id}/factura.pdf`).buffer(true).parse((res, cb) => {
@@ -353,7 +353,46 @@ describe('completar, factura y entrega', () => {
     await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
     await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
     const { calcularFactura, lineaVehiculo } = await import('../modulos/factura');
-    expect(lineaVehiculo((await calcularFactura(orden.id)).orden)).toBe('Vehículo: Volkswagen Golf · 1234ABC · 98.500 km a la entrada · 98.512 km a la salida');
+    expect(lineaVehiculo(await calcularFactura(orden.id))).toBe('Vehículo: Volkswagen Golf · 1234ABC · 98.500 km a la entrada · 98.512 km a la salida');
+  });
+
+  it('la factura recibe su número propio al completar y ya no cambia aunque se editen cliente, vehículo o piezas', async () => {
+    const { mec, ana, jefe, orden, partidas } = await lista();
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
+    const antes = (await ana.get(`/api/ordenes/${orden.id}`)).body.factura;
+    expect(antes.codigo).toBe('F-2026-0001');
+    const pdfAntes = await ana.get(`/api/ordenes/${orden.id}/factura.pdf`);
+    expect(pdfAntes.headers['content-disposition']).toContain('Factura-F-2026-0001.pdf');
+    // Cambios posteriores: perfil del cliente, nombre y precio de la pieza, tarifa e IVA.
+    await ana.put('/api/perfil').send({ tipo: 'EMPRESA', telefono: '600999888', razonSocial: 'Otra Razón SL', nif: 'B87654321' });
+    const piezas = await prisma.pieza.findMany();
+    for (const p of piezas) await jefe.patch(`/api/piezas/${p.id}`).send({ nombre: `${p.nombre} RENOMBRADA`, precioCentimos: p.precioCentimos * 3 });
+    await prisma.configTaller.update({ where: { id: 1 }, data: { tarifaHoraCentimos: 99_00, ivaPorcentaje: 10 } });
+    const despues = (await ana.get(`/api/ordenes/${orden.id}`)).body.factura;
+    expect(despues).toEqual(antes);
+    const { calcularFactura } = await import('../modulos/factura');
+    const f = await calcularFactura(orden.id);
+    expect(f.cliente.nombre).not.toBe('Otra Razón SL');
+    expect(f.lineas.some((l) => l.concepto.includes('RENOMBRADA'))).toBe(false);
+    const email = await prisma.emailSaliente.findFirstOrThrow({ where: { plantilla: 'ORDEN_COMPLETADA' } });
+    expect((email.datos as { factura: string }).factura).toBe('F-2026-0001');
+  });
+
+  it('QA: los números de factura son correlativos y empiezan de nuevo cada año', async () => {
+    const { codigoFactura, emitirFactura } = await import('../modulos/factura');
+    expect(codigoFactura(2026, 7)).toBe('F-2026-0007');
+    expect(codigoFactura(2026, 12345)).toBe('F-2026-12345');
+    const { mec, orden, partidas } = await lista();
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
+    // Emisiones simultáneas: cada una recibe un número distinto y sin huecos.
+    const emitir = (ahora: Date) => prisma.$transaction((tx) => emitirFactura(tx, orden.id, ahora));
+    const codigos = (await Promise.all([1, 2, 3].map(() => emitir(new Date('2026-12-31T12:00:00Z'))))).map((f) => f.codigo).sort();
+    expect(codigos).toEqual(['F-2026-0002', 'F-2026-0003', 'F-2026-0004'].sort());
+    // El 31 de diciembre a las 23:30 en Madrid (22:30 UTC) aún es 2026; a las 00:30 ya es 2027.
+    expect((await emitir(new Date('2026-12-31T22:30:00Z'))).codigo).toBe('F-2026-0005');
+    expect((await emitir(new Date('2026-12-31T23:30:00Z'))).codigo).toBe('F-2027-0001');
   });
 
   it('esperar piezas y reanudar avisan al cliente', async () => {

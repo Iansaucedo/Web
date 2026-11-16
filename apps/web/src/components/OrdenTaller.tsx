@@ -399,7 +399,7 @@ export function OrdenTaller({ id }: { id: string }) {
                     )}
                   </Stack>
                   {o.motivoNoCompletable && editable && <Typography variant="body2" color="text.secondary">Para completar: {o.motivoNoCompletable.toLowerCase()}.</Typography>}
-                  {o.factura && <Alert severity="success" action={<Button color="inherit" href={`/api/ordenes/${o.id}/factura.pdf`} target="_blank">PDF</Button>}>Factura: {euros(o.factura.total)} IVA incluido</Alert>}
+                  {o.factura && <Alert severity="success" action={<Button color="inherit" href={`/api/ordenes/${o.id}/factura.pdf`} target="_blank">PDF</Button>}>Factura{o.factura.codigo ? ` ${o.factura.codigo}` : ''}: {euros(o.factura.total)} IVA incluido</Alert>}
 
                   {o.observaciones.length > 0 && (
                     <Card>

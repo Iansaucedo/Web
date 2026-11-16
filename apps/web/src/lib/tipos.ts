@@ -104,7 +104,7 @@ export interface OrdenDetalle extends OrdenResumen {
   descripcionProblema: string;
   solicitudes: Solicitud[];
   presupuesto: Importe;
-  factura: (Importe & { lineas: { concepto: string; cantidad: number; precioUnitarioCentimos: number; importeCentimos: number }[] }) | null;
+  factura: (Importe & { codigo: string | null; lineas: { concepto: string; cantidad: number; precioUnitarioCentimos: number; importeCentimos: number }[] }) | null;
   observaciones: { id: string; texto: string; interna: boolean; autor: string; fecha: string }[];
   eventos: { id: string; tipo: string; payload: Record<string, unknown>; actor: string; fecha: string }[];
   motivoNoCompletable: string | null;

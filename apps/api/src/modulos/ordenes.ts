@@ -13,7 +13,7 @@ import { obtenerConfig } from '../servicios/config';
 import { avisar } from '../servicios/avisos';
 import { registrarEvento } from '../servicios/eventos';
 import { bloquearOrden, datosVehiculo, ordenAccesible } from '../servicios/ordenes';
-import { calcularFactura, facturaPdf } from './factura';
+import { calcularFactura, emitirFactura, facturaPdf } from './factura';
 import { adjuntarFotos, MAX_FOTOS_POR_TRABAJO, urlFoto } from '../servicios/fotos';
 import { colocarEnPuesto } from './citas';
 import { euros, fechaLarga, hora, numeroOrden } from '../emails/formato';
@@ -51,7 +51,7 @@ const OrdenDetalleSchema = OrdenResumenSchema.extend({
   descripcionProblema: z.string(),
   solicitudes: z.array(SolicitudSchema),
   presupuesto: Importe.openapi({ description: 'Estimado de los trabajos aceptados y pendientes, con IVA' }),
-  factura: Importe.extend({ lineas: z.array(z.object({ concepto: z.string(), cantidad: z.number(), precioUnitarioCentimos: Centimos, importeCentimos: Centimos })) })
+  factura: Importe.extend({ codigo: z.string().nullable().openapi({ example: 'F-2026-0001' }), lineas: z.array(z.object({ concepto: z.string(), cantidad: z.number(), precioUnitarioCentimos: Centimos, importeCentimos: Centimos })) })
     .nullable()
     .openapi({ description: 'Solo cuando está completada o entregada: piezas usadas y horas reales' }),
   observaciones: z.array(z.object({ id: Id, texto: z.string(), interna: z.boolean(), autor: z.string(), fecha: Instante })),
@@ -97,7 +97,7 @@ async function detalle(ordenId: string, verInterno: boolean) {
   let factura = null;
   if (o.estado === 'COMPLETADA' || o.estado === 'ENTREGADA') {
     const f = await calcularFactura(o.id);
-    factura = { base: f.base, iva: f.iva, total: f.total, lineas: f.lineas };
+    factura = { codigo: f.codigo, base: f.base, iva: f.iva, total: f.total, lineas: f.lineas };
   }
   return {
     ...aOrdenResumen(o),
@@ -430,8 +430,9 @@ definir({
       });
       await tx.vehiculo.update({ where: { id: o.vehiculoId }, data: { kilometros: cuerpo.kmSalida } });
       await registrarEvento(tx, o.id, 'ESTADO_CAMBIADO', usuario.id, { de: o.estado, a: 'COMPLETADA', texto: 'Listo para recoger', kmSalida: cuerpo.kmSalida });
-      // En la misma transacción que el cierre: o se completa y se avisa con la factura, o no pasa nada.
-      const f = await calcularFactura(o.id, tx);
+      // En la misma transacción que el cierre: la factura recibe su número y queda congelada, y se avisa con ella.
+      // O pasa todo, o nada (tampoco se gasta el número).
+      const f = await emitirFactura(tx, o.id, ahora);
       await avisar(tx, o.cita.cliente.usuarioId, {
         tipo: 'ORDEN_COMPLETADA',
         mensaje: `${numeroOrden(o.numero)}: tu vehículo está listo. Total ${euros(f.total)}`,
@@ -439,6 +440,7 @@ definir({
         adjuntoFacturaOrdenId: o.id,
         datos: {
           ...datosVehiculo(o),
+          factura: f.codigo,
           lineas: f.lineas.map((l) => ({ concepto: l.concepto, importe: euros(l.importeCentimos) })),
           base: euros(f.base),
           iva: euros(f.iva),
@@ -500,9 +502,9 @@ definir({
   manejador: async ({ usuario, params, res }) => {
     const o = await ordenAccesible(usuario, params.id);
     if (o.estado !== 'COMPLETADA' && o.estado !== 'ENTREGADA') throw conflicto('SIN_FACTURA', 'La factura estará disponible al completar la reparación');
-    const pdf = await facturaPdf(o.id);
+    const { pdf, nombre } = await facturaPdf(o.id);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="Factura-${numeroOrden(o.numero)}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${nombre}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(pdf);
   },

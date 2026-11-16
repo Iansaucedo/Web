@@ -84,6 +84,16 @@ export const PLANTILLAS = {
     filas: [['Vehículo', veh(d)], ['Antes', d.antes], ['Ahora', `${d.fecha}, ${d.hora}`]],
     boton: { texto: 'Ver mi cita', url: d.enlace },
   }),
+  CITA_MODIFICADA_TALLER: (d: D): ContenidoEmail => ({
+    asunto: `Cita cambiada, por confirmar · ${d.matricula} · ${d.fecha} ${d.hora}`,
+    previo: `${d.cliente} ha cambiado la hora de su cita.`,
+    tono: 'aviso',
+    etiqueta: 'Por confirmar',
+    titulo: 'Un cliente ha cambiado su cita',
+    parrafos: [`${d.cliente} ha cambiado la hora de su cita. Vuelve a estar pendiente de confirmar.`],
+    filas: [['Cliente', d.cliente], ['Vehículo', veh(d)], ['Antes', d.antes], ['Ahora', `${d.fecha}, ${d.hora}`], ['Motivo', d.problema]],
+    boton: { texto: 'Revisar citas', url: d.enlace },
+  }),
   CITA_CANCELADA: (d: D): ContenidoEmail => ({
     asunto: `Cita cancelada: ${d.fecha} a las ${d.hora}`,
     previo: d.porTaller ? 'El taller ha cancelado la cita.' : 'Has cancelado la cita.',
@@ -168,13 +178,13 @@ export const PLANTILLAS = {
   }),
   ORDEN_COMPLETADA: (d: D): ContenidoEmail => ({
     asunto: `${d.orden} · Tu vehículo está listo`,
-    previo: `Total: ${d.total}. Factura adjunta.`,
+    previo: `Total: ${d.total}. Factura ${d.factura ?? ''} adjunta.`.replace('  ', ' '),
     tono: 'exito',
     etiqueta: 'Listo para recoger',
     titulo: 'Tu vehículo está listo',
     parrafos: [`Hemos terminado los trabajos de tu ${d.marca} ${d.modelo}. Puedes pasar a recogerlo en horario del taller.`],
     tabla: { columnas: ['Concepto', 'Importe'], filas: d.lineas.map((l: D) => [l.concepto, l.importe]), pie: [['Base', d.base], [`IVA (${d.ivaPorcentaje} %)`, d.iva], ['Total', d.total]] },
-    adjunto: `Factura-${d.orden}.pdf`,
+    adjunto: `Factura-${d.factura ?? d.orden}.pdf`,
     boton: { texto: 'Ver la orden', url: d.enlace },
   }),
   ORDEN_RECHAZADA: (d: D): ContenidoEmail => ({

@@ -109,6 +109,8 @@ model Vehiculo {
   citas       Cita[]
   ordenes     Orden[]
   reservas    ReservaMultipleVehiculo[]
+
+  @@index([clienteId])
 }
 
 enum EstadoCita {
@@ -136,6 +138,8 @@ model Cita {
   recordatorioEn      DateTime? // cuándo se envió el recordatorio de 24 h (null: aún no)
 
   @@index([inicio, estado])
+  @@index([vehiculoId])
+  @@index([clienteId])
 }
 
 enum EstadoReservaMultiple {
@@ -256,6 +260,12 @@ model Orden {
   // Tarifa e IVA con los que se facturó: se fijan al completar para que la factura no cambie si luego cambia la configuración
   tarifaHoraCentimos Int?
   ivaPorcentaje      Int?
+  /// Número de factura propio y correlativo por año (F-2026-0001). Se asigna al completar la orden.
+  facturaCodigo      String?                 @unique
+  facturaEmitidaEn   DateTime?
+  /// Copia de la factura al emitirla (cliente, vehículo, líneas e importes): ya no cambia aunque luego se editen
+  /// el perfil del cliente, el vehículo o las piezas del catálogo.
+  facturaDatos       Json?
   solicitudes        SolicitudAutorizacion[]
   trabajos           RegistroTrabajo[]
   observaciones      Observacion[]
@@ -263,6 +273,13 @@ model Orden {
   ocupaciones        OcupacionPuesto[]
 
   @@index([estado])
+  @@index([vehiculoId])
+}
+
+/// Último número de factura emitido en cada año (la numeración vuelve a 1 cada enero).
+model ContadorFactura {
+  anio   Int @id
+  ultimo Int @default(0)
 }
 
 enum EstadoSolicitud {
@@ -548,6 +565,7 @@ model Notificacion {
   creadaEn  DateTime @default(now())
 
   @@index([usuarioId, leida])
+  @@index([usuarioId, creadaEn])
 }
 
 // Una sola fila (id = 1).

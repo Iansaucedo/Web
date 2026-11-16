@@ -40,7 +40,8 @@ definir({
     const rango = { gte: inicioDia(query.desde, c.zonaHoraria), lt: inicioDia(sumarDias(query.hasta, 1), c.zonaHoraria) };
     const [completadas, rechazadas, abiertas, citas, partidas, trabajos] = await Promise.all([
       prisma.orden.findMany({ where: { completadaEn: rango } }),
-      prisma.orden.count({ where: { estado: { in: ['RECHAZADA'] }, abiertaEn: rango } }),
+      // Una orden rechazada no se completa nunca: al entregarla pasa a ENTREGADA pero sigue sin `completadaEn`.
+      prisma.orden.count({ where: { estado: { in: ['RECHAZADA', 'ENTREGADA'] }, completadaEn: null, abiertaEn: rango } }),
       prisma.orden.count({ where: { estado: { not: 'ENTREGADA' } } }),
       prisma.cita.findMany({ where: { inicio: rango }, select: { estado: true, inicio: true } }),
       prisma.partida.groupBy({ by: ['descripcion'], where: { estado: 'ACEPTADA', solicitud: { orden: { abiertaEn: rango } } }, _count: { _all: true }, orderBy: { _count: { descripcion: 'desc' } }, take: 5 }),
@@ -49,12 +50,13 @@ definir({
 
     const porDia = new Map(diasEntre(query.desde, query.hasta).map((d) => [d, { fecha: d, facturadoCentimos: 0, citas: 0 }]));
     const total = { base: 0, iva: 0, total: 0 };
+    const completadaEn = new Map(completadas.map((o) => [o.id, o.completadaEn!]));
     // Todas las facturas del periodo de una vez (antes, varias consultas por cada orden).
     for (const f of await calcularFacturas(completadas.map((o) => o.id))) {
       total.base += f.base;
       total.iva += f.iva;
       total.total += f.total;
-      const d = porDia.get(diaLocal(f.orden.completadaEn!, c.zonaHoraria));
+      const d = porDia.get(diaLocal(completadaEn.get(f.ordenId)!, c.zonaHoraria));
       if (d) d.facturadoCentimos += f.total;
     }
     for (const x of citas) {

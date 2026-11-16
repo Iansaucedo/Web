@@ -13,6 +13,7 @@ export const datosEjemplo: Record<NombrePlantilla, Record<string, unknown>> = {
   CITA_NUEVA_TALLER: { nombre: 'Marta', cliente: 'Ana García', ...golf, fecha: 'martes, 10 de noviembre', hora: '09:30', problema: 'Ruido al frenar y testigo de ABS encendido', enlace: `${web}/jefe/citas` },
   CITA_CONFIRMADA: { nombre: 'Ana', ...golf, fecha: 'martes, 10 de noviembre', hora: '09:30', horasCancelar: 24, enlace: `${web}/ordenes` },
   RECORDATORIO_CITA: { nombre: 'Ana', marca: 'Volkswagen', modelo: 'Golf', matricula: '1234 ABC', fecha: 'miércoles, 11 de noviembre', hora: '10:00', problema: 'Ruido al frenar', enlace: `${web}/ordenes` },
+  CITA_MODIFICADA_TALLER: { nombre: 'Marta', cliente: 'Ana García', ...golf, antes: 'martes, 10 de noviembre, 09:30', fecha: 'jueves, 12 de noviembre', hora: '11:00', problema: 'Ruido al frenar', enlace: `${web}/jefe/citas?fecha=2026-11-12` },
   CITA_MODIFICADA: { nombre: 'Ana', ...golf, antes: 'martes, 10 de noviembre, 09:30', fecha: 'jueves, 12 de noviembre', hora: '11:00', enlace: `${web}/ordenes` },
   CITA_CANCELADA: { nombre: 'Ana', ...golf, fecha: 'martes, 10 de noviembre', hora: '09:30', porTaller: true, motivo: 'Falta de personal ese día', enlace: `${web}/reservar` },
   CITA_NO_PRESENTADO: { nombre: 'Ana', ...golf, fecha: 'martes, 10 de noviembre', hora: '09:30', enlace: `${web}/reservar` },
@@ -52,6 +53,7 @@ export const datosEjemplo: Record<NombrePlantilla, Record<string, unknown>> = {
     nombre: 'Ana',
     ...golf,
     orden: 'OR-0042',
+    factura: 'F-2026-0042',
     lineas: [
       { concepto: 'Pastillas de freno delanteras (x1)', importe: '56,00 €' },
       { concepto: 'Mano de obra: cambiar pastillas (1 h)', importe: '40,00 €' },
