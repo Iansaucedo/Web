@@ -8,7 +8,7 @@ import { aUsuario, ParamId, UsuarioSchema, Id, Instante, lista } from './esquema
 import { obtenerConfig } from '../servicios/config';
 import { dejarConstancia } from '../servicios/constancias';
 import { DIAS_RECUPERACION } from '../servicios/bajas';
-import { COOKIE_SESION } from '../middleware/auth';
+import { borrarCookieSesion } from '../middleware/auth';
 import { conflicto } from '../lib/errores';
 import { reloj } from '../lib/reloj';
 import { diaLargo } from '../emails/formato';
@@ -88,8 +88,10 @@ definir({
           datos: { nombre: usuario.nombre, hasta: diaLargo(sumarDias(diaLocal(reloj.ahora(), c.zonaHoraria), DIAS_RECUPERACION)), dias: DIAS_RECUPERACION, citasCanceladas: citas.count, enlace: `${process.env.PUBLIC_WEB_URL ?? ''}/login` },
         },
       });
+      // Cierra también las sesiones de otros dispositivos.
+      await tx.usuario.update({ where: { id: usuario.id }, data: { versionSesion: { increment: 1 } } });
     });
-    res.clearCookie(COOKIE_SESION, { path: '/' });
+    borrarCookieSesion(res);
   },
 });
 

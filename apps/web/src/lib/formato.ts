@@ -18,6 +18,8 @@ export const sumarDias = (d: string, n: number) => {
   f.setUTCDate(f.getUTCDate() + n);
   return f.toISOString().slice(0, 10);
 };
+/** «1 cita», «3 citas», «0 citas». */
+export const cuantos = (n: number, singular: string, plural: string) => `${n.toLocaleString('es-ES')} ${n === 1 ? singular : plural}`;
 export const horasMin = (min: number) => `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
 
 export const ESTADO_ORDEN: Record<EstadoOrden, { texto: string; tono: Tono }> = {

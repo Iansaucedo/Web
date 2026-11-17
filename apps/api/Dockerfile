@@ -17,18 +17,30 @@ COPY prisma ./prisma
 COPY apps/api ./apps/api
 RUN npm run build --workspace=api
 
+# Solo dependencias de ejecución: vitest, tsx, typescript… (y sus vulnerabilidades) no llegan a producción.
+FROM node:22-alpine AS prod
+RUN apk add --no-cache openssl
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY prisma ./prisma
+RUN npm ci --workspace=api --include-workspace-root --omit=dev --no-audit --no-fund \
+ && npx prisma generate \
+ && npm cache clean --force
+
 FROM node:22-alpine AS run
 RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=4000
 
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+# Sin privilegios: el usuario `node` de la imagen base, dueño solo de lo que necesita.
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node prisma ./prisma
+COPY --from=prod --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+USER node
 
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

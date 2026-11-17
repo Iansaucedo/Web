@@ -93,7 +93,7 @@ async function detalle(ordenId: string, verInterno: boolean) {
   const c = await obtenerConfig(prisma);
   const partidas = o.solicitudes.flatMap((s) => s.partidas);
   const estimado = partidas.filter((p) => p.estado !== 'RECHAZADA').reduce((s, p) => s + p.importeEstimadoCentimos, 0);
-  const { base, iva, total } = conIva(estimado, c.ivaPorcentaje);
+  const { base, iva, total } = conIva(estimado, o.ivaPorcentaje ?? c.ivaPorcentaje);
   let factura = null;
   if (o.estado === 'COMPLETADA' || o.estado === 'ENTREGADA') {
     const f = await calcularFactura(o.id);
@@ -422,14 +422,16 @@ definir({
       if (motivo) throw reglaNegocio('NO_COMPLETABLE', motivo);
       comprobarKmSalida(o.kmEntrada, cuerpo.kmSalida);
       const ahora = reloj.ahora();
-      await tx.orden.update({ where: { id: o.id }, data: { estado: 'COMPLETADA', completadaEn: ahora, kmSalida: cuerpo.kmSalida } });
+      // La tarifa y el IVA quedan fijados en la orden: la factura ya no cambia aunque luego cambie la configuración.
+      const c = await obtenerConfig(tx);
+      await tx.orden.update({
+        where: { id: o.id },
+        data: { estado: 'COMPLETADA', completadaEn: ahora, kmSalida: cuerpo.kmSalida, tarifaHoraCentimos: c.tarifaHoraCentimos, ivaPorcentaje: c.ivaPorcentaje },
+      });
       await tx.vehiculo.update({ where: { id: o.vehiculoId }, data: { kilometros: cuerpo.kmSalida } });
       await registrarEvento(tx, o.id, 'ESTADO_CAMBIADO', usuario.id, { de: o.estado, a: 'COMPLETADA', texto: 'Listo para recoger', kmSalida: cuerpo.kmSalida });
-    });
-    // La factura se calcula fuera de la transacción de cierre, ya con todo guardado; el email va en la misma operación lógica.
-    const f = await calcularFactura(params.id);
-    await transaccion(async (tx) => {
-      const o = await tx.orden.findUniqueOrThrow({ where: { id: params.id }, include: { vehiculo: true, cita: { include: { cliente: true } } } });
+      // En la misma transacción que el cierre: o se completa y se avisa con la factura, o no pasa nada.
+      const f = await calcularFactura(o.id, tx);
       await avisar(tx, o.cita.cliente.usuarioId, {
         tipo: 'ORDEN_COMPLETADA',
         mensaje: `${numeroOrden(o.numero)}: tu vehículo está listo. Total ${euros(f.total)}`,

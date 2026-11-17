@@ -24,8 +24,8 @@ import type { Correccion, Jornada, Lista } from '../../../../lib/tipos';
 export default function MiJornada() {
   const hasta = hoy();
   const desde = sumarDias(hasta, -13);
-  const jornadas = useDatos<Lista<Jornada>>(`/jornadas?desde=${desde}&hasta=${hasta}`);
-  const correcciones = useDatos<Lista<Correccion>>('/correcciones');
+  const jornadas = useDatos<Lista<Jornada>>(`/jornadas?desde=${desde}&hasta=${hasta}&mias=true`);
+  const correcciones = useDatos<Lista<Correccion>>('/correcciones?mias=true');
   const [abierto, setAbierto] = useState(false);
   const [f, setF] = useState({ fecha: hasta, tipo: 'SALIDA', hora: '', motivo: '' });
   const { ejecutar, ocupado, error, limpiarError } = useAccion();

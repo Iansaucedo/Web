@@ -41,3 +41,29 @@ test('las tablas del jefe no rompen el ancho de la pantalla', async ({ page }) =
     expect(await sinScrollHorizontal(page), ruta).toBe(true);
   }
 });
+
+test('con una empresa en espera, /jefe/empresas no ensancha la página (texto oculto de la cabecera de la tabla)', async ({ page }) => {
+  await entrarComo(page, 'flota@empresa.test');
+  await page.request.put('/api/perfil', { data: { tipo: 'EMPRESA', telefono: '942000000', razonSocial: 'Transportes Cantábricos del Norte SL', nif: 'B12345678' } });
+  const ids: string[] = [];
+  for (const m of ['1111AAA', '2222BBB']) ids.push((await (await page.request.post('/api/vehiculos', { data: { matricula: m, marca: 'Ford', modelo: 'Transit' } })).json()).id);
+  expect((await page.request.post('/api/reservas-multiples', { data: { vehiculoIds: ids, fechasPreferidas: ['2026-11-11'] } })).ok()).toBeTruthy();
+  await entrarComo(page, 'jefe@taller.test');
+  await page.goto('/jefe/empresas');
+  await expect(page.getByTestId('reserva')).toBeVisible();
+  expect(await sinScrollHorizontal(page)).toBe(true);
+});
+
+test('el menú plegable se cierra al tocar fuera y al elegir una página', async ({ page }) => {
+  await entrarComo(page, 'jefe@taller.test');
+  await page.goto('/jefe');
+  const menu = page.getByRole('navigation', { name: 'Menú principal' });
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
+  await expect(menu).toBeVisible();
+  await page.touchscreen.tap(380, 400); // fuera del panel de 280 px
+  await expect(menu).toBeHidden();
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
+  await page.getByRole('link', { name: 'Órdenes' }).click();
+  await expect(page).toHaveURL(/\/jefe\/ordenes$/);
+  await expect(menu).toBeHidden();
+});

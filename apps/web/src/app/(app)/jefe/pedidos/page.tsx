@@ -31,7 +31,7 @@ export default function Pedidos() {
   return (
     <>
       <Cabecera titulo="Pedidos de piezas" />
-      <Tabs value={estado} onChange={(_, v) => setEstado(v)} variant="scrollable" sx={{ mb: 2 }}>
+      <Tabs value={estado} onChange={(_, v) => setEstado(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 2 }}>
         {PESTANAS.map(([v, t]) => <Tab key={v} value={v} label={t} />)}
       </Tabs>
       {acc.error && !rechazar.abierto && <Alert severity="error" sx={{ mb: 2 }} onClose={acc.limpiarError}>{acc.error}</Alert>}

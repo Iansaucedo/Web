@@ -21,6 +21,17 @@ COPY apps/web ./apps/web
 RUN npm run build -w api
 RUN npm run build -w web
 
+# Solo dependencias de ejecución: vitest, tsx, typescript… (y sus vulnerabilidades) no llegan a producción.
+FROM node:22-alpine AS prod
+RUN apk add --no-cache openssl
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY prisma ./prisma
+RUN npm ci --workspace=api --include-workspace-root --omit=dev --no-audit --no-fund \
+ && npx prisma generate \
+ && npm cache clean --force
+
 FROM node:22-alpine AS run
 RUN apk add --no-cache openssl
 WORKDIR /app
@@ -30,14 +41,16 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     API_INTERNAL_URL=http://127.0.0.1:4000
 
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build /app/apps/web/.next/standalone ./
-COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
-COPY start.js ./
+# Sin privilegios: el usuario `node` de la imagen base.
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node prisma ./prisma
+COPY --from=prod --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+COPY --chown=node:node start.js ./
+USER node
 
 EXPOSE 3000
 

@@ -22,6 +22,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
 import BuildIcon from '@mui/icons-material/Build';
@@ -151,6 +152,7 @@ const iniciales = (nombre: string) =>
     .join('');
 
 const ANCHO = 280;
+const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.default' } as const;
 
 function Campana() {
   const [ancla, setAncla] = useState<HTMLElement | null>(null);
@@ -233,8 +235,18 @@ function SinAcceso({ rol }: { rol: Rol }) {
 export function Shell({ children }: { children: ReactNode }) {
   const { usuario } = useSesion();
   const ruta = usePathname();
-  const movil = useMediaQuery('(max-width:899px)');
+  // El tamaño lo decide el CSS (breakpoint md = 900 px), no `useMediaQuery`: así el primer pintado ya es el
+  // correcto en móvil (antes salía un instante el menú fijo de escritorio). Esto solo cierra el menú temporal.
+  const escritorio = useMediaQuery(useTheme().breakpoints.up('md'));
   const [abierto, setAbierto] = useState(false);
+  // Al pasar a escritorio o cambiar de página, el menú temporal se cierra: si no, quedaba «abierto» y
+  // reaparecía al volver a estrechar la ventana.
+  useEffect(() => {
+    if (escritorio) setAbierto(false);
+  }, [escritorio]);
+  useEffect(() => {
+    setAbierto(false);
+  }, [ruta]);
   const [menuUsuario, setMenuUsuario] = useState<HTMLElement | null>(null);
   const grupos = menu(usuario.rol, usuario.cliente?.tipo === 'EMPRESA');
   const todas = grupos.flatMap((g) => g.entradas);
@@ -300,11 +312,9 @@ export function Shell({ children }: { children: ReactNode }) {
       </Box>
       <AppBar position="fixed" sx={{ width: { md: `calc(100% - ${ANCHO}px)` }, ml: { md: `${ANCHO}px` }, bgcolor: 'background.paper' }}>
         <Toolbar sx={{ gap: 1 }}>
-          {movil && (
-            <IconButton aria-label="Abrir menú" onClick={() => setAbierto(true)} edge="start">
-              <MenuIcon />
-            </IconButton>
-          )}
+          <IconButton aria-label="Abrir menú" onClick={() => setAbierto(true)} edge="start" sx={{ display: { md: 'none' } }}>
+            <MenuIcon />
+          </IconButton>
           <Typography variant="h6" component="p" noWrap sx={{ flexGrow: 1, color: 'text.primary' }} data-testid="titulo-barra">
             {tituloDe(ruta, activa)}
           </Typography>
@@ -325,12 +335,17 @@ export function Shell({ children }: { children: ReactNode }) {
           </Menu>
         </Toolbar>
       </AppBar>
+      {/* Móvil y ventanas estrechas: menú temporal (solo existe en el DOM mientras está abierto). */}
       <Drawer
-        variant={movil ? 'temporary' : 'permanent'}
-        open={movil ? abierto : true}
+        variant="temporary"
+        open={abierto && !escritorio}
         onClose={() => setAbierto(false)}
-        sx={{ width: ANCHO, flexShrink: 0, '& .MuiDrawer-paper': { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.default' } }}
+        sx={{ display: { md: 'none' }, '& .MuiDrawer-paper': PAPEL }}
       >
+        {lateral}
+      </Drawer>
+      {/* Escritorio: menú fijo. En móvil está oculto con CSS (también para lectores de pantalla). */}
+      <Drawer variant="permanent" open sx={{ display: { xs: 'none', md: 'block' }, width: ANCHO, flexShrink: 0, '& .MuiDrawer-paper': PAPEL }}>
         {lateral}
       </Drawer>
       <Box component="main" id="contenido" tabIndex={-1} sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, md: 4 }, maxWidth: 1280, '&:focus': { outline: 'none' } }}>

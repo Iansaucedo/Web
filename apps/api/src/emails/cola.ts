@@ -1,6 +1,6 @@
 import { prisma } from '../db';
 import { reloj } from '../lib/reloj';
-import { log } from '../lib/log';
+import { log, ocultarEmail } from '../lib/log';
 import { PLANTILLAS, type NombrePlantilla } from './plantillas';
 import { maquetar } from './maqueta';
 import { TransporteMemoria, transporteSmtp, type Transporte } from './transporte';
@@ -78,7 +78,7 @@ function transporteSegunEntorno(): Transporte {
   if (process.env.CORREO_TRANSPORTE === 'memoria' || process.env.NODE_ENV === 'test') return transporteMemoria;
   if (!process.env.SMTP_HOST) {
     log('warn', 'SMTP_HOST no configurado: los emails se escriben en el log');
-    return { enviar: async (m) => log('info', 'email (sin SMTP)', { para: m.para, asunto: m.asunto }) };
+    return { enviar: async (m) => log('info', 'email (sin SMTP)', { para: ocultarEmail(m.para), asunto: m.asunto }) };
   }
   return transporteSmtp();
 }

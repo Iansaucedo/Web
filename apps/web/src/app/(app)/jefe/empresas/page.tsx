@@ -25,7 +25,7 @@ import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../../compo
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
 import { useAccion, useDatos } from '../../../../lib/hooks';
-import { dia, hora, hoy, sumarDias } from '../../../../lib/formato';
+import { dia, hora, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { DiaDisponible, Lista, ReservaMultiple } from '../../../../lib/tipos';
 
 const libres = (d: DiaDisponible) => Math.max(0, d.capacidad - d.ocupadas);
@@ -76,9 +76,9 @@ export default function Empresas() {
           return (
             <Stack spacing={3}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 4 }}><Cifra titulo="Solicitudes en espera" valor={espera.length} detalle={`${espera.reduce((s, r) => s + r.vehiculos.length, 0)} vehículos en total`} /></Grid>
+                <Grid size={{ xs: 12, sm: 4 }}><Cifra titulo="Solicitudes en espera" valor={espera.length} detalle={`${cuantos(espera.reduce((s, r) => s + r.vehiculos.length, 0), 'vehículo', 'vehículos')} en total`} /></Grid>
                 <Grid size={{ xs: 12, sm: 4 }}><Cifra titulo="Con hueco disponible" valor={espera.filter(huecoPara).length} detalle="Pendientes de llamar" /></Grid>
-                <Grid size={{ xs: 12, sm: 4 }}><Cifra titulo="Convertidas este mes" valor={convertidas.length} detalle={`${convertidas.reduce((s, r) => s + r.vehiculos.length, 0)} citas creadas`} /></Grid>
+                <Grid size={{ xs: 12, sm: 4 }}><Cifra titulo="Convertidas este mes" valor={convertidas.length} detalle={`${cuantos(convertidas.reduce((s, r) => s + r.vehiculos.length, 0), 'cita creada', 'citas creadas')}`} /></Grid>
               </Grid>
 
               {espera.length ? (

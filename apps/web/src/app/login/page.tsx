@@ -35,7 +35,8 @@ function Login() {
   const params = useSearchParams();
   const error = params.get('error');
   const volver = params.get('volver');
-  const destino = volver && volver.startsWith('/') && !volver.startsWith('//') ? volver : '/';
+  // Solo rutas de esta web: «//otro.com» o «/\otro.com» (el navegador trata «\» como «/») irían a otro dominio.
+  const destino = volver && /^\/(?![/\\])/.test(volver) && !volver.includes('\\') ? volver : '/';
   const [email, setEmail] = useState('');
   const [fallo, setFallo] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);

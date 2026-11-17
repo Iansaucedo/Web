@@ -47,8 +47,11 @@ export async function mecanicosPresentes(tx: Tx, dia: string) {
   });
 }
 
-/** Ocupación de un día: capacidad, citas activas y citas por franja (clave: instante ISO). */
-export async function ocupacionDia(tx: Tx, dia: string, c: ConfigTaller) {
+/**
+ * Ocupación de un día: capacidad, citas activas y citas por franja (clave: instante ISO).
+ * `exceptoCitaId`: cita que no cuenta (la que se está cambiando de hora, que deja libre su plaza).
+ */
+export async function ocupacionDia(tx: Tx, dia: string, c: ConfigTaller, exceptoCitaId?: string) {
   const desde = inicioDia(dia, c.zonaHoraria);
   const hasta = inicioDia(sumarDias(dia, 1), c.zonaHoraria);
   const [puestosActivos, presentes, ordenesArrastradas, citas] = await Promise.all([
@@ -56,7 +59,7 @@ export async function ocupacionDia(tx: Tx, dia: string, c: ConfigTaller) {
     mecanicosPresentes(tx, dia),
     // Vehículos que siguen en el taller desde días anteriores ocupan sitio.
     tx.orden.count({ where: { estado: { not: 'ENTREGADA' }, cita: { inicio: { lt: desde } } } }),
-    tx.cita.findMany({ where: { inicio: { gte: desde, lt: hasta }, estado: { in: [...ESTADOS_CITA_ACTIVA] } }, select: { inicio: true } }),
+    tx.cita.findMany({ where: { inicio: { gte: desde, lt: hasta }, estado: { in: [...ESTADOS_CITA_ACTIVA] }, ...(exceptoCitaId ? { NOT: { id: exceptoCitaId } } : {}) }, select: { inicio: true } }),
   ]);
   const capacidad = capacidadDia({ puestosActivos, mecanicosPresentes: presentes, vehiculosPorMecanico: c.vehiculosPorMecanico, ordenesArrastradas });
   const porFranja = new Map<string, number>();

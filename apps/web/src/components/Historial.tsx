@@ -5,6 +5,7 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
@@ -49,6 +50,7 @@ export function HistorialVehiculo({ vehiculoId }: { vehiculoId: string }) {
                     <Typography variant="h6">OR-{String(o.numero).padStart(4, '0')} · {fechaCorta(o.abiertaEn)} · {o.kmEntrada.toLocaleString('es-ES')} km</Typography>
                     <ChipEstado {...ESTADO_ORDEN[o.estado]} />
                   </Stack>
+                  <TableContainer>
                   <Table size="small" aria-label="Piezas">
                     <TableHead>
                       <TableRow>
@@ -82,6 +84,7 @@ export function HistorialVehiculo({ vehiculoId }: { vehiculoId: string }) {
                       )}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 </CardContent>
               </Card>
             ))}

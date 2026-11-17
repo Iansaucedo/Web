@@ -16,7 +16,7 @@ import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../../compo
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
 import { useAccion, useDatos } from '../../../../lib/hooks';
-import { ESTADO_CITA, diaLargo, hoy, sumarDias } from '../../../../lib/formato';
+import { ESTADO_CITA, diaLargo, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { Cita, DiaDisponible, Lista, Puesto } from '../../../../lib/tipos';
 
 function Citas() {
@@ -41,7 +41,7 @@ function Citas() {
     <>
       <Cabecera
         titulo="Citas y recepción"
-        subtitulo={dia ? `${dia.ocupadas} citas · capacidad ${dia.capacidad}${dia.ocupadas > dia.capacidad ? ' · ¡hay más citas de las que caben!' : ''}` : undefined}
+        subtitulo={dia ? `${cuantos(dia.ocupadas, 'cita', 'citas')} · capacidad ${dia.capacidad}${dia.ocupadas > dia.capacidad ? ' · ¡hay más citas de las que caben!' : ''}` : undefined}
         acciones={
           <Stack direction="row" sx={{ alignItems: 'center' }}>
             <IconButton aria-label="Día anterior" onClick={() => setFecha(sumarDias(fecha, -1))}><AnteriorIcon /></IconButton>

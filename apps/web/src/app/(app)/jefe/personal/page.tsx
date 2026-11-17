@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Alert from '@mui/material/Alert';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch from '@mui/material/Switch';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -13,6 +14,7 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
@@ -23,7 +25,7 @@ import { ChipEstado } from '../../../../components/ChipEstado';
 import { useSesion } from '../../../../components/Sesion';
 import { api } from '../../../../lib/api';
 import { useAccion, useDatos } from '../../../../lib/hooks';
-import { dia, diaLargo, hoy, sumarDias } from '../../../../lib/formato';
+import { dia, diaLargo, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { DiaDisponible, Lista, Mecanico, Puesto, TipoAusencia } from '../../../../lib/tipos';
 
 interface Asignacion { puestoId: string; puesto: string; empleadoId: string; mecanico: string }
@@ -35,7 +37,13 @@ const TIPOS: Record<TipoAusencia, { texto: string; tono: 'info' | 'aviso' | 'err
   PERSONAL: { texto: 'Asuntos propios', tono: 'aviso' },
   OTRA: { texto: 'Ausencia', tono: 'neutro' },
 };
-interface Invitacion { id: string; email: string; rol: string; creadaPor: string; usadaEn: string | null }
+interface Invitacion { id: string; email: string; rol: string; creadaPor: string; usadaEn: string | null; caducada: boolean }
+
+function estadoMecanico(x: Mecanico) {
+  if (!x.activo) return <ChipEstado tono="neutro" texto="De baja" />;
+  if (x.ausenteHoy) return <ChipEstado tono="error" texto="Ausente hoy" />;
+  return x.puestosHoy.length ? x.puestosHoy.join(', ') : <ChipEstado tono="aviso" texto="Sin puesto hoy" />;
+}
 
 export default function Personal() {
   const { usuario } = useSesion();
@@ -78,15 +86,22 @@ export default function Personal() {
               </Stack>
               <Carga {...mecanicos}>
                 {(m) => (
-                  <Table size="small">
+                  <TableContainer>
+                  {/* Tabla compacta: cabe en móvil sin desplazarse (las acciones se apilan), así los botones siempre se ven. */}
+                  <Table size="small" aria-label="Mecánicos" sx={{ '@media (max-width:599.95px)': { minWidth: 0 }, '& td': { whiteSpace: 'normal' } }}>
                     <TableBody>
                       {m.datos.map((x) => (
                         <TableRow key={x.empleadoId}>
-                          <TableCell><Typography sx={{ fontWeight: 500 }}>{x.nombre}</Typography><Typography variant="caption" color="text.secondary">{x.email}</Typography></TableCell>
-                          <TableCell>{!x.activo ? <ChipEstado tono="neutro" texto="De baja" /> : x.ausenteHoy ? <ChipEstado tono="error" texto="Ausente hoy" /> : x.puestosHoy.length ? x.puestosHoy.join(', ') : <ChipEstado tono="aviso" texto="Sin puesto hoy" />}</TableCell>
+                          <TableCell>
+                            <Typography sx={{ fontWeight: 500 }}>{x.nombre}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{x.email}</Typography>
+                            {/* En móvil el estado va debajo del nombre, para que quepan los botones. */}
+                            <Box sx={{ display: { sm: 'none' }, mt: 0.5 }}>{estadoMecanico(x)}</Box>
+                          </TableCell>
+                          <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{estadoMecanico(x)}</TableCell>
                           <TableCell align="right">
                             {x.activo ? (
-                              <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
                                 <Button size="small" onClick={() => { setFAus(hoy()); setHastaAus(''); setTipoAus('VACACIONES'); setNotaAus(''); ausencia.abrir(x); }}>Ausencia</Button>
                                 <Button size="small" color="error" onClick={() => { setMotivoBaja(''); bajaEmpleado.abrir(x); }}>Dar de baja</Button>
                               </Stack>
@@ -99,6 +114,7 @@ export default function Personal() {
                       {!m.datos.length && <TableRow><TableCell>No hay mecánicos. Dales de alta con su email de Google.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 )}
               </Carga>
               {Boolean(ausencias.datos?.datos.length) && (
@@ -122,7 +138,7 @@ export default function Personal() {
                 <Typography variant="h6">Puestos el {diaLargo(fecha)}</Typography>
                 <TextField type="date" size="small" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} sx={{ width: 170 }} inputProps={{ min: hoy(), 'aria-label': 'Día de las asignaciones' }} />
               </Stack>
-              {d && <Typography variant="body2" color={d.ocupadas > d.capacidad ? 'error' : 'text.secondary'} sx={{ mb: 2 }}>Capacidad: {d.capacidad} vehículos · {d.ocupadas} citas</Typography>}
+              {d && <Typography variant="body2" color={d.ocupadas > d.capacidad ? 'error' : 'text.secondary'} sx={{ mb: 2 }}>Capacidad: {cuantos(d.capacidad, 'vehículo', 'vehículos')} · {cuantos(d.ocupadas, 'cita', 'citas')}</Typography>}
               <Carga {...puestos}>
                 {(p) => (
                   <Stack spacing={1.5}>
@@ -130,12 +146,13 @@ export default function Personal() {
                       const asig = asignaciones.datos?.datos.find((a) => a.puestoId === x.id);
                       return (
                         <Stack key={x.id} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                          <Typography sx={{ width: 110, fontWeight: 500 }}>{x.nombre}</Typography>
+                          <Typography sx={{ width: { xs: 84, sm: 110 }, flexShrink: 0, fontWeight: 500, overflowWrap: 'anywhere' }}>{x.nombre}</Typography>
                           {x.activo ? (
                             <TextField
                               select
                               size="small"
                               label="Mecánico"
+                              sx={{ flex: 1, minWidth: 0 }}
                               value={asig?.empleadoId ?? ''}
                               onChange={async (e) => { await acc.ejecutar(() => api.put('/asignaciones', { fecha, puestoId: x.id, empleadoId: e.target.value || null }), 'Asignación guardada'); recargarTodo(); }}
                             >
@@ -161,20 +178,22 @@ export default function Personal() {
               <Typography variant="h6" sx={{ mb: 1 }}>Altas pendientes</Typography>
               <Carga {...invitaciones}>
                 {(i) => (
-                  <Table size="small">
+                  <TableContainer>
+                  <Table size="small" aria-label="Altas pendientes">
                     <TableHead><TableRow><TableCell>Email</TableCell><TableCell>Rol</TableCell><TableCell>Estado</TableCell><TableCell /></TableRow></TableHead>
                     <TableBody>
                       {i.datos.map((x) => (
                         <TableRow key={x.id}>
                           <TableCell>{x.email}</TableCell>
                           <TableCell>{x.rol === 'JEFE' ? 'Jefe de taller' : 'Mecánico'}</TableCell>
-                          <TableCell>{x.usadaEn ? <ChipEstado tono="exito" texto="Ya ha entrado" /> : <ChipEstado tono="aviso" texto="Pendiente" />}</TableCell>
+                          <TableCell>{x.usadaEn ? <ChipEstado tono="exito" texto="Ya ha entrado" /> : x.caducada ? <ChipEstado tono="error" texto="Caducada: vuelve a invitar" /> : <ChipEstado tono="aviso" texto="Pendiente" />}</TableCell>
                           <TableCell align="right">{!x.usadaEn && <Button size="small" color="error" onClick={async () => { await acc.ejecutar(() => api.delete(`/invitaciones/${x.id}`), 'Alta anulada'); void invitaciones.recargar(); }}>Anular</Button>}</TableCell>
                         </TableRow>
                       ))}
                       {!i.datos.length && <TableRow><TableCell colSpan={4}>No hay altas.</TableCell></TableRow>}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 )}
               </Carga>
             </CardContent>

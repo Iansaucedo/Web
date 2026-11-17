@@ -81,6 +81,21 @@ describe('jornadas', () => {
     expect((await otro.get('/api/jornadas?desde=2026-11-09&hasta=2026-11-10')).body.datos).toHaveLength(0);
   });
 
+  it('«Mi jornada» (mias=true): el jefe solo ve sus fichajes y sus correcciones, no las del equipo', async () => {
+    const { mec, jefe } = await semana();
+    a('08:15', '2026-11-10');
+    await fichar(jefe, 'ENTRADA');
+    a('12:00', '2026-11-10');
+    await mec.post('/api/correcciones').send({ fecha: '2026-11-09', tipo: 'SALIDA', hora: '16:05', motivo: 'Olvidé fichar' });
+    const propias = (await jefe.get('/api/jornadas?desde=2026-11-09&hasta=2026-11-10&mias=true')).body.datos;
+    expect(propias.map((j: { empleadoId: string; fecha: string }) => [j.empleadoId, j.fecha])).toEqual([[jefe.empleadoId, '2026-11-10']]);
+    expect((await jefe.get('/api/correcciones?mias=true')).body.datos).toHaveLength(0);
+    // Sin mias, el panel del equipo sigue viéndolo todo.
+    expect((await jefe.get('/api/correcciones')).body.datos).toHaveLength(1);
+    // Un mecánico no puede usar mias para saltarse nada: sigue viendo solo lo suyo.
+    expect((await mec.get(`/api/jornadas?desde=2026-11-09&hasta=2026-11-10&mias=true&empleadoId=${jefe.empleadoId}`)).status).toBe(403);
+  });
+
   it('exporta CSV para Excel, protegido contra fórmulas', async () => {
     const { jefe } = await semana();
     await prisma.usuario.updateMany({ where: { email: 'mec1@taller.test' }, data: { nombre: '=HYPERLINK("http://x")' } });

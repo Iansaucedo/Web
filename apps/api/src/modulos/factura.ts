@@ -1,5 +1,7 @@
 import PDFDocument from 'pdfkit';
+import type { ConfigTaller, Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../db';
+import type { Tx } from '../lib/transaccion';
 import { conIva } from '../domain/importes';
 import { obtenerConfig } from '../servicios/config';
 import { euros, fechaLarga, numeroOrden } from '../emails/formato';
@@ -11,21 +13,20 @@ export interface LineaFactura {
   importeCentimos: number;
 }
 
+const incluirFactura = {
+  vehiculo: { include: { cliente: { include: { usuario: true } } } },
+  solicitudes: { orderBy: { creadaEn: 'asc' }, include: { partidas: { where: { estado: 'ACEPTADA' }, include: { piezasUsadas: { include: { pieza: true } }, trabajos: true } } } },
+} satisfies Prisma.OrdenInclude;
+type OrdenFactura = Prisma.OrdenGetPayload<{ include: typeof incluirFactura }>;
+
 /**
- * Factura de una orden: solo los trabajos aceptados, con las piezas realmente usadas
- * (al precio del momento de usarlas) y las horas registradas a la tarifa actual.
+ * Factura de una orden: solo los trabajos aceptados, con las piezas realmente usadas (al precio del momento
+ * de usarlas) y las horas registradas. Tarifa e IVA son los que quedaron fijados al completar la orden;
+ * solo una orden aún sin completar usa los de la configuración actual.
  */
-export async function calcularFactura(ordenId: string) {
-  const [orden, config] = await Promise.all([
-    prisma.orden.findUniqueOrThrow({
-      where: { id: ordenId },
-      include: {
-        vehiculo: { include: { cliente: { include: { usuario: true } } } },
-        solicitudes: { orderBy: { creadaEn: 'asc' }, include: { partidas: { where: { estado: 'ACEPTADA' }, include: { piezasUsadas: { include: { pieza: true } }, trabajos: true } } } },
-      },
-    }),
-    obtenerConfig(prisma),
-  ]);
+function componerFactura(orden: OrdenFactura, config: ConfigTaller) {
+  const tarifa = orden.tarifaHoraCentimos ?? config.tarifaHoraCentimos;
+  const ivaPorcentaje = orden.ivaPorcentaje ?? config.ivaPorcentaje;
   const lineas: LineaFactura[] = [];
   for (const p of orden.solicitudes.flatMap((s) => s.partidas)) {
     for (const u of p.piezasUsadas) {
@@ -34,14 +35,25 @@ export async function calcularFactura(ordenId: string) {
     const minutos = p.trabajos.reduce((s, t) => s + t.minutos, 0);
     if (minutos > 0) {
       const horas = Math.round((minutos / 60) * 100) / 100;
-      lineas.push({ concepto: `Mano de obra: ${p.descripcion}`, cantidad: horas, precioUnitarioCentimos: config.tarifaHoraCentimos, importeCentimos: Math.round((minutos / 60) * config.tarifaHoraCentimos) });
+      lineas.push({ concepto: `Mano de obra: ${p.descripcion}`, cantidad: horas, precioUnitarioCentimos: tarifa, importeCentimos: Math.round((minutos / 60) * tarifa) });
     }
   }
   const base = lineas.reduce((s, l) => s + l.importeCentimos, 0);
-  return { orden, lineas, ivaPorcentaje: config.ivaPorcentaje, ...conIva(base, config.ivaPorcentaje) };
+  return { orden, lineas, ivaPorcentaje, ...conIva(base, ivaPorcentaje) };
 }
 
-type OrdenFactura = Awaited<ReturnType<typeof calcularFactura>>['orden'];
+/** `db` puede ser una transacción: así la factura ve lo que se acaba de guardar en ella. */
+export async function calcularFactura(ordenId: string, db: Tx | PrismaClient = prisma) {
+  const [orden, config] = await Promise.all([db.orden.findUniqueOrThrow({ where: { id: ordenId }, include: incluirFactura }), obtenerConfig(db)]);
+  return componerFactura(orden, config);
+}
+
+/** Varias facturas con dos consultas en total (para las estadísticas). */
+export async function calcularFacturas(ordenIds: string[], db: Tx | PrismaClient = prisma) {
+  if (!ordenIds.length) return [];
+  const [ordenes, config] = await Promise.all([db.orden.findMany({ where: { id: { in: ordenIds } }, include: incluirFactura }), obtenerConfig(db)]);
+  return ordenes.map((o) => componerFactura(o, config));
+}
 
 const km = (n: number) => `${n.toLocaleString('es-ES')} km`;
 

@@ -40,8 +40,10 @@ describe('plantillas', () => {
 });
 
 describe('bandeja de salida', () => {
+  // Con la hora del reloj de la aplicación (la que usa la cola), no con la del sistema: si no, un reloj fijado en
+  // el pasado deja el email «aún sin tocar», y un redondeo de milisegundos podía dejar fuera el último del lote.
   const encolar = (datos: object = { nombre: 'Ana', enlace: 'http://localhost:3000/' }) =>
-    prisma.emailSaliente.create({ data: { para: 'ana@cliente.test', plantilla: 'BIENVENIDA', datos } });
+    prisma.emailSaliente.create({ data: { para: 'ana@cliente.test', plantilla: 'BIENVENIDA', datos, creadoEn: reloj.ahora(), proximoIntento: reloj.ahora() } });
 
   it('envía lo pendiente y lo marca como enviado', async () => {
     await encolar();
