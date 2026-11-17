@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { LUNES_7, clienteListo, emails, entrarComo, fijarHora, madrid, reiniciar } from './ayudas';
+import { LUNES_7, clienteListo, emails, entrarComo, fijarHora, madrid, recibirEnPuesto1, reiniciar } from './ayudas';
 
 test.beforeEach(async ({ page, request }) => {
   await reiniciar(request);
@@ -10,8 +10,7 @@ test.beforeEach(async ({ page, request }) => {
 async function ordenEnReparacion(page: Page) {
   const vehiculoId = await clienteListo(page);
   const cita = await (await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-09', '09:00'), descripcionProblema: 'Ruido' } })).json();
-  await entrarComo(page, 'jefe@taller.test');
-  const orden = await (await page.request.post(`/api/citas/${cita.id}/recibir`, { data: { kmEntrada: 98500 } })).json();
+  const orden = await recibirEnPuesto1(page, cita.id, 98500);
   await entrarComo(page, 'mecanico@taller.test');
   const s = await (await page.request.post(`/api/ordenes/${orden.id}/solicitudes`, { data: { partidas: [{ descripcion: 'Sustituir sensor ABS', horasEstimadas: 1, piezasEstimadasCentimos: 9000 }] } })).json();
   await entrarComo(page, 'ana@cliente.test');
@@ -423,4 +422,50 @@ test('Menú como en Figma: el mecánico consulta su historial y el catálogo sin
   // «Cerrar sesión» está abajo del menú lateral, como en Figma
   await page.getByRole('button', { name: 'Cerrar sesión' }).click();
   await expect(page).toHaveURL(/\/login/);
+});
+
+test('Deshacer una pieza usada por error: vuelve al almacén y el cliente lo ve en la línea de tiempo', async ({ page }) => {
+  const ordenId = await ordenEnReparacion(page);
+  await entrarComo(page, 'mecanico@taller.test');
+  const orden = await (await page.request.get(`/api/ordenes/${ordenId}`)).json();
+  const piezas = (await (await page.request.get('/api/piezas?q=FA-010')).json()).datos;
+  expect((await page.request.post(`/api/partidas/${orden.solicitudes[0].partidas[0].id}/piezas-usadas`, { data: { piezaId: piezas[0].id, cantidad: 3 } })).ok()).toBeTruthy();
+  await page.goto(`/mecanico/ordenes/${ordenId}`);
+  await page.getByRole('button', { name: 'Deshacer 3 × Filtro de aceite' }).click();
+  const d = page.getByRole('dialog', { name: '¿Deshacer la pieza usada?' });
+  await expect(d.getByRole('button', { name: 'Deshacer' })).toBeDisabled();
+  await d.getByLabel('Motivo').fill('Era para otro coche');
+  await d.getByRole('button', { name: 'Deshacer' }).click();
+  await expect(page.getByText('Pieza quitada del trabajo. Las unidades vuelven al almacén')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Deshacer 3 ×/ })).toHaveCount(0);
+  expect((await (await page.request.get('/api/piezas?q=FA-010')).json()).datos[0].stock).toBe(10);
+  await entrarComo(page, 'ana@cliente.test');
+  await page.goto(`/ordenes/${ordenId}`);
+  await expect(page.getByText(/Pieza quitada del trabajo \(registrada por error\): 3 × Filtro de aceite/)).toBeVisible();
+});
+
+test('Otro mecánico consulta la orden, pero sin puesto asignado no puede cambiarla', async ({ page }) => {
+  const ordenId = await ordenEnReparacion(page);
+  await entrarComo(page, 'mecanico2@taller.test');
+  await page.goto(`/mecanico/ordenes/${ordenId}`);
+  await expect(page.getByText('Este vehículo está en un puesto que no tienes asignado hoy')).toBeVisible();
+  await expect(page.getByText('Sustituir sensor ABS', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registrar horas' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Añadir observación' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Pedir autorización' })).toBeDisabled();
+});
+
+test('Abrir la página de un aviso desde el menú lo da por leído', async ({ page }) => {
+  const vehiculoId = await clienteListo(page);
+  await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-10', '10:00'), descripcionProblema: 'Ruido' } });
+  await entrarComo(page, 'jefe@taller.test');
+  const sinLeer = async () => (await (await page.request.get('/api/notificaciones')).json()).noLeidas as number;
+  await page.goto('/jefe/pedidos');
+  await expect(page.getByRole('button', { name: /Avisos: 1 sin leer/ })).toBeVisible();
+  expect(await sinLeer()).toBe(1);
+  // Sin pulsar el aviso: se llega a «Citas y recepción» desde el menú lateral.
+  await page.getByRole('link', { name: 'Citas y recepción' }).click();
+  await expect(page).toHaveURL(/\/jefe\/citas/);
+  await expect(page.getByRole('button', { name: 'Avisos', exact: true })).toBeVisible();
+  expect(await sinLeer()).toBe(0);
 });

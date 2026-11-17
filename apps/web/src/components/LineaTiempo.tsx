@@ -19,6 +19,8 @@ function frase(e: OrdenDetalle['eventos'][number]): string {
       return p.terminado ? `Terminado: ${p.trabajo}` : `${p.minutos} min en «${p.trabajo}»: ${p.descripcion}`;
     case 'PIEZA_USADA':
       return `Pieza montada: ${p.cantidad} × ${p.pieza}`;
+    case 'PIEZA_ANULADA':
+      return `Pieza quitada del trabajo (registrada por error): ${p.cantidad} × ${p.pieza}. Vuelve al almacén`;
     case 'PIEZA_QUITADA':
       return `Pieza retirada: ${p.cantidad} × ${p.descripcion} (${p.destino === 'DESECHADA' ? 'desechada' : 'se te devuelve'})`;
     case 'PUESTO_ASIGNADO':

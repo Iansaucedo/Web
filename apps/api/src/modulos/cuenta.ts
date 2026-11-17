@@ -219,6 +219,24 @@ definir({
 
 definir({
   metodo: 'post',
+  ruta: '/notificaciones/leer-ruta',
+  etiqueta: 'Avisos',
+  resumen: 'Marcar como leídos los avisos de una página',
+  descripcion:
+    'La web lo llama al abrir cada página: los avisos sin leer que enlazan a esa ruta (sin contar la query: `/jefe/citas?fecha=…` es de `/jefe/citas`) se dan por vistos, se llegue desde el aviso, desde el menú o por un enlace.',
+  cuerpo: z.object({ ruta: z.string().regex(/^\/[^?#\s]{0,300}$/, 'Ruta de la web sin query, p. ej. /jefe/pedidos') }).strict(),
+  respuesta: z.object({ marcados: z.number().int() }),
+  manejador: async ({ usuario, cuerpo }) => {
+    const r = await prisma.notificacion.updateMany({
+      where: { usuarioId: usuario.id, leida: false, OR: [{ enlace: cuerpo.ruta }, { enlace: { startsWith: `${cuerpo.ruta}?` } }] },
+      data: { leida: true },
+    });
+    return { marcados: r.count };
+  },
+});
+
+definir({
+  metodo: 'post',
   ruta: '/notificaciones/leer-todas',
   etiqueta: 'Avisos',
   resumen: 'Marcar todos mis avisos como leídos',

@@ -66,3 +66,30 @@ describe('límite diario de acciones de cliente que avisan al taller', () => {
     expect((await reservar(ana, PASADO, '10:00')).status).toBe(201);
   });
 });
+
+describe('modo de pruebas: solo en local o con la clave', () => {
+  it('desde fuera de la máquina, las rutas de pruebas no existen (404); con la clave, sí', async () => {
+    const { esLocal } = await import('../middleware/pruebas');
+    expect(esLocal('::ffff:127.0.0.1', undefined)).toBe(true);
+    expect(esLocal('127.0.0.1', '::1, 127.0.0.1:5000')).toBe(true);
+    // Un X-Forwarded-For inventado con 127.0.0.1 no basta: los proxies añaden la IP real detrás.
+    expect(esLocal('127.0.0.1', '127.0.0.1, 81.40.12.7')).toBe(false);
+    expect(esLocal('10.0.0.5', undefined)).toBe(false);
+
+    const fuera = { 'X-Forwarded-For': '81.40.12.7' };
+    expect((await anonimo().post('/api/test/reloj').set(fuera).send({ ahora: null })).status).toBe(404);
+    expect((await anonimo().post('/api/auth/test-login').set(fuera).send({ email: 'a@x.es' })).status).toBe(404);
+    expect((await anonimo().post('/api/test/reloj').send({ ahora: null })).status).toBe(200);
+
+    process.env.PRUEBAS_SECRETO = 'clave-de-pruebas-muy-larga-0123456789';
+    try {
+      expect((await anonimo().post('/api/test/reloj').set({ ...fuera, 'X-Pruebas-Secreto': 'otra' }).send({ ahora: null })).status).toBe(404);
+      expect((await anonimo().post('/api/test/reloj').set({ ...fuera, 'X-Pruebas-Secreto': process.env.PRUEBAS_SECRETO }).send({ ahora: null })).status).toBe(200);
+      // Una clave corta no vale nunca (para que nadie la configure como «1234»).
+      process.env.PRUEBAS_SECRETO = 'corta';
+      expect((await anonimo().post('/api/test/reloj').set({ ...fuera, 'X-Pruebas-Secreto': 'corta' }).send({ ahora: null })).status).toBe(404);
+    } finally {
+      delete process.env.PRUEBAS_SECRETO;
+    }
+  });
+});

@@ -17,6 +17,8 @@ type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface OpcionesLlamada {
   /** Misma clave en los reintentos de una misma acción: el servidor no la repite. */
   claveIdempotencia?: string;
+  /** Cabeceras adicionales (p. ej. la clave del modo de pruebas). */
+  cabeceras?: Record<string, string>;
 }
 
 export const nuevaClave = () =>
@@ -28,6 +30,7 @@ async function llamar<T>(metodo: Metodo, ruta: string, cuerpo?: unknown, op: Opc
   const archivo = typeof Blob !== 'undefined' && cuerpo instanceof Blob ? cuerpo : null;
   if (metodo !== 'GET') cabeceras['Content-Type'] = archivo ? archivo.type : 'application/json';
   if (op.claveIdempotencia) cabeceras['Idempotency-Key'] = op.claveIdempotencia;
+  Object.assign(cabeceras, op.cabeceras);
   let r: Response;
   try {
     r = await fetch(`/api${ruta}`, {

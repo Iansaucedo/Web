@@ -159,6 +159,14 @@ function Campana() {
   // Los 10 más recientes; el resto, en la pantalla de notificaciones (paginada).
   const { datos, recargar } = useDatos<Paginada<Notificacion> & { noLeidas: number }>('/notificaciones?porPagina=10');
   const router = useRouter();
+  const ruta = usePathname();
+  // Abrir una página da por vistos sus avisos, se llegue desde la campana, desde el menú o por un enlace.
+  useEffect(() => {
+    void api
+      .post<{ marcados: number }>('/notificaciones/leer-ruta', { ruta })
+      .then((r) => { if (r?.marcados) void recargar(); })
+      .catch(() => undefined);
+  }, [ruta, recargar]);
   // Sin WebSockets (requisito): los avisos se consultan cada minuto mientras la pestaña está visible.
   useEffect(() => {
     const t = setInterval(() => {
@@ -245,6 +253,25 @@ export function Shell({ children }: { children: ReactNode }) {
   // correcto en móvil (antes salía un instante el menú fijo de escritorio). Esto solo cierra el menú temporal.
   const escritorio = useMediaQuery(useTheme().breakpoints.up('md'));
   const [abierto, setAbierto] = useState(false);
+  // Escritorio: el menú fijo se puede plegar con la hamburguesa (se recuerda en este navegador).
+  const [plegado, setPlegado] = useState(false);
+  useEffect(() => {
+    try {
+      setPlegado(localStorage.getItem('menuPlegado') === '1');
+    } catch {
+      // Sin almacenamiento: se queda desplegado.
+    }
+  }, []);
+  const alternarPlegado = () =>
+    setPlegado((p) => {
+      try {
+        localStorage.setItem('menuPlegado', p ? '0' : '1');
+      } catch {
+        // Sin almacenamiento: solo vale para esta sesión.
+      }
+      return !p;
+    });
+  const anchoFijo = plegado ? 0 : ANCHO;
   // Al pasar a escritorio o cambiar de página, el menú temporal se cierra: si no, quedaba «abierto» y
   // reaparecía al volver a estrechar la ventana.
   useEffect(() => {
@@ -316,9 +343,14 @@ export function Shell({ children }: { children: ReactNode }) {
       >
         Saltar al contenido
       </Box>
-      <AppBar position="fixed" sx={{ width: { md: `calc(100% - ${ANCHO}px)` }, ml: { md: `${ANCHO}px` }, bgcolor: 'background.paper' }}>
+      <AppBar position="fixed" sx={{ width: { md: `calc(100% - ${anchoFijo}px)` }, ml: { md: `${anchoFijo}px` }, bgcolor: 'background.paper', transition: (t) => t.transitions.create(['width', 'margin'], { duration: t.transitions.duration.shorter }) }}>
         <Toolbar sx={{ gap: 1 }}>
-          <IconButton aria-label="Abrir menú" onClick={() => setAbierto(true)} edge="start" sx={{ display: { md: 'none' } }}>
+          <IconButton
+            aria-label={escritorio ? (plegado ? 'Mostrar menú lateral' : 'Ocultar menú lateral') : 'Abrir menú'}
+            aria-expanded={escritorio ? !plegado : abierto}
+            onClick={() => (escritorio ? alternarPlegado() : setAbierto(true))}
+            edge="start"
+          >
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" component="p" noWrap sx={{ flexGrow: 1, color: 'text.primary' }} data-testid="titulo-barra">
@@ -350,11 +382,21 @@ export function Shell({ children }: { children: ReactNode }) {
       >
         {lateral}
       </Drawer>
-      {/* Escritorio: menú fijo. En móvil está oculto con CSS (también para lectores de pantalla). */}
-      <Drawer variant="permanent" open sx={{ display: { xs: 'none', md: 'block' }, width: ANCHO, flexShrink: 0, '& .MuiDrawer-paper': PAPEL }}>
+      {/* Escritorio: menú fijo y plegable. En móvil está oculto con CSS (también para lectores de pantalla). */}
+      <Drawer
+        variant="persistent"
+        open={!plegado}
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          width: anchoFijo,
+          flexShrink: 0,
+          transition: (t) => t.transitions.create('width', { duration: t.transitions.duration.shorter }),
+          '& .MuiDrawer-paper': PAPEL,
+        }}
+      >
         {lateral}
       </Drawer>
-      <Box component="main" id="contenido" tabIndex={-1} sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, md: 4 }, maxWidth: 1280, '&:focus': { outline: 'none' } }}>
+      <Box component="main" id="contenido" tabIndex={-1} sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto', '&:focus': { outline: 'none' } }}>
         <Toolbar />
         {puedeVer(usuario.rol, ruta) ? children : <SinAcceso rol={usuario.rol} />}
       </Box>

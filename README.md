@@ -67,15 +67,16 @@ El proyecto incluye flujos de trabajo de **GitHub Actions** para comprobar, comp
 ## Tests
 
 ```bash
-npm test          # 312 tests de API: dominio + integración contra la base de datos taller_test
-npm run e2e       # 56 E2E con Playwright: flujos, QA, paginación, accesibilidad (axe) y móvil (base de datos taller_e2e)
+npm test          # 318 tests de API: dominio + integración contra la base de datos taller_test
+npm run e2e       # 59 E2E con Playwright: flujos, QA, paginación, accesibilidad (axe) y móvil (base de datos taller_e2e)
 npm run lint      # ESLint de todo el monorepo (también en la CI)
 npm run mutaciones  # rompe 27 reglas a propósito y comprueba que los tests fallan (docs/mutaciones.md)
 ```
 
 Bases de datos necesarias: `taller_test` y `taller_e2e` (usuario `taller`), con las migraciones aplicadas
 (`DATABASE_URL=... npx prisma migrate deploy`). En modo test existen `POST /api/auth/test-login` y
-`/api/test/*` (reiniciar datos, fijar la hora, ver los emails); en producción no se montan.
+`/api/test/*` (reiniciar datos, fijar la hora, ver los emails), que solo responden desde la propia máquina
+o con la cabecera `X-Pruebas-Secreto` igual a `PRUEBAS_SECRETO`; en producción no se montan.
 
 ## Fiabilidad
 

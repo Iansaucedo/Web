@@ -7,6 +7,7 @@ import { reloj } from '../lib/reloj';
 import { PERSONAL } from '../servicios/acceso';
 import { adjuntarFotos, fotoVisible, formatoReal, MAX_BYTES_FOTO, MAX_FOTOS_POR_TRABAJO, MAX_FOTOS_SUELTAS, LADO_MAXIMO_FOTO, sanearFoto, TIPOS_FOTO, urlFoto } from '../servicios/fotos';
 import { Id, ParamId } from './esquemas';
+import { noEsTuPuesto, puedeModificar } from '../servicios/ordenes';
 
 const LADO = LADO_MAXIMO_FOTO;
 const FotoSubida = z.object({ id: Id, url: z.string().openapi({ example: '/api/fotos/ckx…' }) }).openapi('FotoSubida');
@@ -76,6 +77,7 @@ definir({
       const p = await tx.partida.findUnique({ where: { id: params.id }, include: { solicitud: { include: { orden: true } } } });
       if (!p) throw noEncontrado('El trabajo');
       if (p.solicitud.orden.estado === 'ENTREGADA') throw conflicto('ESTADO_NO_PERMITE', 'La orden ya está entregada');
+      if (!(await puedeModificar(tx, usuario, p.solicitud.orden))) throw noEsTuPuesto();
       await adjuntarFotos(tx, p.id, [cuerpo.fotoId], usuario.id);
       return { id: cuerpo.fotoId, url: `/api/fotos/${cuerpo.fotoId}` };
     }),

@@ -377,6 +377,7 @@ enum TipoMovimientoStock {
   CUADRE // el jefe fija el recuento real tras un inventario (con motivo)
   USO // montada en una reparación
   RECEPCION // llega un pedido
+  ANULACION // se deshace una pieza usada por error: vuelve al almacén
 }
 
 // Registro de cada cambio de stock. Solo inserción: la suma de `delta` es el stock actual.
@@ -488,6 +489,7 @@ enum TipoEvento {
   PEDIDO_ACTUALIZADO
   OBSERVACION
   KM_CORREGIDOS
+  PIEZA_ANULADA
 }
 
 // Solo inserción: nunca se edita ni se borra.

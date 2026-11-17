@@ -101,11 +101,12 @@ En la Web App de la API (`taller-api`):
 - `PUBLIC_WEB_URL`: `https://taller-web.azurewebsites.net`  
   *(Debe ser la URL pública del frontend Next.js, no de la API, para que la redirección tras el inicio de sesión fije la cookie en el dominio que ve el usuario).*
 
-> [!TIP]
-> **Modo Pruebas (sin Google):** Si necesitas probar el sistema en Azure o localmente sin configurar Google OAuth:
-> - Configura en la API: `NODE_ENV=test`
-> - Configura en la Web: `NEXT_PUBLIC_ACCESO_PRUEBAS=1`
-> Esto activará botones de acceso rápido directo en `/login` para entrar con roles de Cliente, Mecánico, Jefe o Dueño.
+> [!CAUTION]
+> **No actives el modo de pruebas (`NODE_ENV=test`) en el despliegue real.** Permite entrar como cualquier usuario sin
+> Google y borrar la base de datos. Úsalo solo en local o en un entorno de pruebas separado, con su propia base de datos
+> sin datos reales: ahí, configura en la API `NODE_ENV=test` y `PRUEBAS_SECRETO` (24+ caracteres, `openssl rand -base64 32`),
+> y en la Web `NEXT_PUBLIC_ACCESO_PRUEBAS=1`. El formulario de acceso de pruebas pide esa clave; sin ella, las rutas de
+> pruebas responden 404 a cualquier petición que no venga de la propia máquina.
 
 ---
 

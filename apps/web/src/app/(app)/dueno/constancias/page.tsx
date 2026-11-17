@@ -22,6 +22,7 @@ const resumen = (c: Constancia) => {
   if (c.entidad === 'Vehiculo') return `${d.matricula} · ${d.marca} ${d.modelo}`;
   if (c.entidad === 'Invitacion') return `${d.email} (${d.rol})`;
   if (c.entidad === 'Ausencia') return `Ausencia del ${String(d.fecha).slice(0, 10)}`;
+  if (c.entidad === 'PiezaUsada') return `${d.cantidad} × ${d.pieza} (${d.referencia}) en ${d.orden}`;
   return c.entidadId;
 };
 
@@ -33,7 +34,7 @@ export default function Constancias() {
       <Cabecera titulo="Constancias de borrado" subtitulo="Copia de todo lo eliminado: qué era, quién lo eliminó, cuándo y por qué." />
       <TextField select label="Qué" value={entidad} onChange={(e) => setEntidad(e.target.value)} sx={{ maxWidth: 240, mb: 2 }}>
         <MenuItem value="">Todo</MenuItem>
-        {[['Usuario', 'Usuarios'], ['Vehiculo', 'Vehículos'], ['Pieza', 'Piezas'], ['Invitacion', 'Invitaciones'], ['Ausencia', 'Ausencias']].map(([v, t]) => <MenuItem key={v} value={v}>{t}</MenuItem>)}
+        {[['Usuario', 'Usuarios'], ['Vehiculo', 'Vehículos'], ['Pieza', 'Piezas'], ['Invitacion', 'Invitaciones'], ['Ausencia', 'Ausencias'], ['PiezaUsada', 'Piezas deshechas']].map(([v, t]) => <MenuItem key={v} value={v}>{t}</MenuItem>)}
       </TextField>
       <Carga {...c}>
         {(d) => (

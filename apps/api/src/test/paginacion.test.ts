@@ -71,4 +71,24 @@ describe('paginación de los listados', () => {
     expect(r.body).toMatchObject({ total: 30, paginas: 3, noLeidas: 30 });
     expect(r.body.datos[0].mensaje).toBe('aviso 29');
   });
+
+  it('abrir una página da por leídos sus avisos (con o sin query en el enlace), y solo los de quien la abre', async () => {
+    const jefe = await entrar('jefe@taller.test', 'JEFE');
+    const otroJefe = await entrar('jefe2@taller.test', 'JEFE');
+    const datos = (usuarioId: string) => [
+      { usuarioId, tipo: 'CITA_NUEVA_TALLER', mensaje: 'a', enlace: '/jefe/citas' },
+      { usuarioId, tipo: 'CITA_MODIFICADA_TALLER', mensaje: 'b', enlace: '/jefe/citas?fecha=2026-11-10' },
+      { usuarioId, tipo: 'PEDIDO_PENDIENTE', mensaje: 'c', enlace: '/jefe/pedidos' },
+      { usuarioId, tipo: 'X', mensaje: 'd', enlace: '/jefe/citas-antiguas' },
+    ];
+    await prisma.notificacion.createMany({ data: [...datos(jefe.usuarioId), ...datos(otroJefe.usuarioId)] });
+    const r = await jefe.post('/api/notificaciones/leer-ruta').send({ ruta: '/jefe/citas' });
+    expect(r.body).toEqual({ marcados: 2 });
+    const sinLeer = async (u: string) => (await prisma.notificacion.findMany({ where: { usuarioId: u, leida: false } })).map((n) => n.mensaje).sort();
+    expect(await sinLeer(jefe.usuarioId)).toEqual(['c', 'd']);
+    expect(await sinLeer(otroJefe.usuarioId)).toEqual(['a', 'b', 'c', 'd']);
+    for (const ruta of ['jefe/citas', '/jefe/citas?fecha=x', 'https://otro.es/', '']) {
+      expect((await jefe.post('/api/notificaciones/leer-ruta').send({ ruta })).status).toBe(400);
+    }
+  });
 });

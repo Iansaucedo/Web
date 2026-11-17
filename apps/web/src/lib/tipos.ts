@@ -108,6 +108,8 @@ export interface OrdenDetalle extends OrdenResumen {
   observaciones: { id: string; texto: string; interna: boolean; autor: string; fecha: string }[];
   eventos: { id: string; tipo: string; payload: Record<string, unknown>; actor: string; fecha: string }[];
   motivoNoCompletable: string | null;
+  /** Quien la ve puede cambiarla (un mecánico, solo si está en un puesto suyo hoy). */
+  puedoModificar: boolean;
 }
 
 export interface Pieza {
@@ -241,7 +243,7 @@ export interface Paginada<T> extends Lista<T> {
 
 export interface MovimientoStock {
   id: string;
-  tipo: 'ALTA' | 'AJUSTE' | 'CUADRE' | 'USO' | 'RECEPCION';
+  tipo: 'ALTA' | 'AJUSTE' | 'CUADRE' | 'USO' | 'RECEPCION' | 'ANULACION';
   delta: number;
   stockAntes: number;
   stockDespues: number;

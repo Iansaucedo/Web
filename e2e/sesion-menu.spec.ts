@@ -27,6 +27,18 @@ test('escritorio estrecho (< 900 px): el menú plegable se cierra y no reaparece
   await expect(abrir).toBeVisible();
 });
 
+test('escritorio: la hamburguesa pliega y despliega el menú lateral', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await entrarComo(page, 'jefe@taller.test');
+  await page.goto('/jefe');
+  const menu = page.getByRole('navigation', { name: 'Menú principal' });
+  await expect(menu).toBeVisible();
+  await page.getByRole('button', { name: 'Ocultar menú lateral' }).click();
+  await expect(menu).toBeHidden();
+  await page.getByRole('button', { name: 'Mostrar menú lateral' }).click();
+  await expect(menu).toBeVisible();
+});
+
 test('una cookie de sesión que ya no vale lleva al login una sola vez (antes, bucle /login ↔ /)', async ({ page, context }) => {
   await context.addCookies([{ name: 'taller_sesion', value: 'token.que-ya-no.vale', url: 'http://localhost:3100' }]);
   let peticiones = 0;

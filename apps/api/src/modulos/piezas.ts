@@ -152,7 +152,7 @@ definir({
 const MovimientoSchema = z
   .object({
     id: Id,
-    tipo: z.enum(['ALTA', 'AJUSTE', 'CUADRE', 'USO', 'RECEPCION']),
+    tipo: z.enum(['ALTA', 'AJUSTE', 'CUADRE', 'USO', 'RECEPCION', 'ANULACION']),
     delta: z.number().int(),
     stockAntes: z.number().int(),
     stockDespues: z.number().int(),
@@ -262,7 +262,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'usar piezas');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'usar piezas', usuario);
       const pieza = await tx.pieza.findUnique({ where: { id: cuerpo.piezaId } });
       if (!pieza || !pieza.activa) throw noEncontrado('La pieza');
       // Con la fila bloqueada: si otro la cogió antes, aquí ya se ve el stock real.
@@ -271,6 +271,36 @@ definir({
       await registrarEvento(tx, orden.id, 'PIEZA_USADA', usuario.id, { pieza: pieza.nombre, referencia: pieza.referencia, cantidad: cuerpo.cantidad, trabajo: partida.descripcion });
       const restante = (await tx.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock;
       return { id: uso.id, stockRestante: restante };
+    });
+  },
+});
+
+definir({
+  metodo: 'post',
+  ruta: '/piezas-usadas/:id/anular',
+  etiqueta: 'Trabajos',
+  resumen: 'Deshacer una pieza usada por error',
+  descripcion:
+    'Devuelve las unidades al almacén (movimiento ANULACION con el motivo) y quita la pieza del trabajo, de la factura y de la trazabilidad. Queda en la línea de tiempo de la orden, a la vista del cliente, y una copia en las constancias. Solo mientras la orden esté en reparación o esperando piezas: una factura ya emitida no cambia.',
+  acceso: PERSONAL,
+  params: ParamId,
+  cuerpo: z.object({ motivo: TextoCorto }).strict(),
+  respuesta: z.object({ stockRestante: z.number().int() }),
+  errores: { 403: 'ORDEN_DE_OTRO_PUESTO', 404: 'El uso de la pieza no existe', 409: 'La orden ya no está en reparación, o ya se deshizo' },
+  manejador: async ({ usuario, params, cuerpo }) => {
+    const uso = await prisma.piezaUsada.findUnique({ where: { id: params.id } });
+    if (!uso) throw noEncontrado('El uso de la pieza');
+    return transaccion(async (tx) => {
+      const { partida, orden } = await partidaParaTrabajar(tx, uso.partidaId, 'deshacer piezas usadas', usuario, { permitirTerminada: true });
+      // Con la orden bloqueada: si otra petición lo deshizo antes, ya no está.
+      const actual = await tx.piezaUsada.findUnique({ where: { id: uso.id }, include: { pieza: true } });
+      if (!actual) throw conflicto('YA_ANULADA', 'Esa pieza ya se quitó del trabajo');
+      const { pieza, ...copia } = actual;
+      const restante = await moverStock(tx, actual.piezaId, { delta: actual.cantidad }, { tipo: 'ANULACION', usuarioId: usuario.id, ordenId: orden.id, motivo: cuerpo.motivo });
+      await dejarConstancia(tx, 'PiezaUsada', { ...copia, pieza: pieza.nombre, referencia: pieza.referencia, orden: numeroOrden(orden.numero) }, 'BORRADO', usuario.id, cuerpo.motivo);
+      await tx.piezaUsada.delete({ where: { id: actual.id } });
+      await registrarEvento(tx, orden.id, 'PIEZA_ANULADA', usuario.id, { pieza: pieza.nombre, referencia: pieza.referencia, cantidad: actual.cantidad, trabajo: partida.descripcion, motivo: cuerpo.motivo });
+      return { stockRestante: restante };
     });
   },
 });
@@ -291,7 +321,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'registrar piezas retiradas', { permitirTerminada: true });
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'registrar piezas retiradas', usuario, { permitirTerminada: true });
       const q = await tx.piezaQuitada.create({ data: { partidaId: partida.id, ...cuerpo, empleadoId: emp.id, fecha: reloj.ahora() } });
       await registrarEvento(tx, orden.id, 'PIEZA_QUITADA', usuario.id, { ...cuerpo, trabajo: partida.descripcion });
       return { id: q.id };
@@ -311,7 +341,7 @@ definir({
   errores: { 404: 'El trabajo no existe', 409: 'Ya terminado u orden fuera de reparación', 422: 'TRABAJO_NO_ACEPTADO' },
   manejador: async ({ usuario, params }) =>
     transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'terminar trabajos');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'terminar trabajos', usuario);
       const ahora = reloj.ahora();
       await tx.partida.update({ where: { id: partida.id }, data: { terminadaEn: ahora } });
       await registrarEvento(tx, orden.id, 'TRABAJO_REGISTRADO', usuario.id, { trabajo: partida.descripcion, terminado: true });
@@ -376,7 +406,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     const id = await transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'pedir piezas');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'pedir piezas', usuario);
       if (cuerpo.piezaId && !(await tx.pieza.findUnique({ where: { id: cuerpo.piezaId } }))) throw noEncontrado('La pieza');
       const p = await tx.pedidoPieza.create({ data: { partidaId: partida.id, piezaId: cuerpo.piezaId, descripcionLibre: cuerpo.descripcionLibre, cantidad: cuerpo.cantidad, creadoPorId: emp.id }, include: incluirPedido });
       await registrarEvento(tx, orden.id, 'PEDIDO_ACTUALIZADO', usuario.id, { pedidoId: p.id, estado: 'PENDIENTE', pieza: nombrePieza(p) }, false);

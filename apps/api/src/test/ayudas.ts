@@ -92,6 +92,8 @@ export async function ordenEnDiagnostico() {
   const cita = (await reservar(ana, '2026-11-09', '09:00')).body;
   reloj.fijar(new Date('2026-11-09T08:00:00Z')); // 09:00
   const puesto = await prisma.puesto.findFirstOrThrow({ where: { nombre: 'Puesto 1' } });
+  // El mecánico tiene ese puesto asignado hoy: solo así puede trabajar en la orden.
+  await prisma.asignacionPuesto.create({ data: { puestoId: puesto.id, empleadoId: mec.empleadoId!, fecha: new Date('2026-11-09T00:00:00.000Z') } });
   const orden = (await jefe.post(`/api/citas/${cita.id}/recibir`).send({ kmEntrada: 98500, puestoId: puesto.id })).body;
   if (!orden.id) throw new Error(`recibir: ${JSON.stringify(orden)}`);
   return { jefe, mec, ana, orden, puesto };

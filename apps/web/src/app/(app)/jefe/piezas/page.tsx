@@ -30,7 +30,7 @@ import { CATEGORIAS, euros, fechaHora, hora, hoy, cuantos } from '../../../../li
 import type { MovimientoStock, Paginada, Pieza } from '../../../../lib/tipos';
 
 // Pantalla «Jefe · Catálogo de piezas» de Figma: tabla con lápiz por fila (menú de acciones) y panel «Movimientos de hoy».
-const TIPO_MOV: Record<MovimientoStock['tipo'], string> = { ALTA: 'Alta', AJUSTE: 'Ajuste', CUADRE: 'Cuadre de inventario', USO: 'Usada en reparación', RECEPCION: 'Pedido recibido' };
+const TIPO_MOV: Record<MovimientoStock['tipo'], string> = { ALTA: 'Alta', AJUSTE: 'Ajuste', CUADRE: 'Cuadre de inventario', USO: 'Usada en reparación', RECEPCION: 'Pedido recibido', ANULACION: 'Devuelta (usada por error)' };
 type Filtro = '' | 'stockBajo' | 'inactivas';
 
 export default function Catalogo() {

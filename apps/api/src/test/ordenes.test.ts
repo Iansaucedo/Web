@@ -28,6 +28,7 @@ describe('ver órdenes', () => {
 
   it('el mecánico ve las órdenes abiertas de sus puestos de hoy', async () => {
     const { jefe, mec, orden, puesto } = await ordenEnDiagnostico();
+    await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: null });
     expect((await mec.get('/api/ordenes?mias=true')).body.datos).toHaveLength(0);
     await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: mec.empleadoId });
     expect((await mec.get('/api/ordenes?mias=true')).body.datos.map((o: { id: string }) => o.id)).toEqual([orden.id]);
@@ -40,6 +41,82 @@ describe('ver órdenes', () => {
     await mec.post(`/api/ordenes/${orden.id}/trabajos`).send({ partidaId: partidas[0].id, minutos: 30, descripcion: 'Desmontar ruedas' });
     expect((await mec.get('/api/ordenes?trabajadas=true')).body.datos.map((o: { id: string }) => o.id)).toEqual([orden.id]);
     expect((await otro.get('/api/ordenes?trabajadas=true')).body.datos).toHaveLength(0);
+  });
+
+  it('un mecánico consulta cualquier orden, pero solo cambia las de sus puestos de hoy; el jefe, todas', async () => {
+    const { jefe, mec, orden, puesto } = await ordenEnReparacion();
+    const otro = await entrar('mec2@taller.test', 'MECANICO');
+    const vista = await otro.get(`/api/ordenes/${orden.id}`);
+    expect(vista.status).toBe(200);
+    expect(vista.body.puedoModificar).toBe(false);
+    expect((await mec.get(`/api/ordenes/${orden.id}`)).body.puedoModificar).toBe(true);
+    expect((await jefe.get(`/api/ordenes/${orden.id}`)).body.puedoModificar).toBe(true);
+    const partida = vista.body.solicitudes[0].partidas[0].id;
+    for (const r of [
+      await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'hola', interna: true }),
+      await otro.post(`/api/ordenes/${orden.id}/trabajos`).send({ partidaId: partida, minutos: 30, descripcion: 'x' }),
+      await otro.patch(`/api/ordenes/${orden.id}`).send({ diagnostico: 'x' }),
+      await otro.post(`/api/ordenes/${orden.id}/estado`).send({ estado: 'ESPERANDO_PIEZAS' }),
+      await otro.post(`/api/partidas/${partida}/terminar`).send({}),
+      await otro.post(`/api/partidas/${partida}/pedidos`).send({ descripcionLibre: 'Junta', cantidad: 1 }),
+    ]) {
+      expect(r.status).toBe(403);
+      expect(r.body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    }
+    expect(await prisma.observacion.count()).toBe(0);
+    // El jefe sí, aunque no tenga puesto.
+    expect((await jefe.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'hola', interna: true })).status).toBe(201);
+    // Si el jefe le da el puesto, ya puede; y una asignación de otro día no cuenta.
+    await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: otro.empleadoId });
+    expect((await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'ya es mío', interna: true })).status).toBe(201);
+    expect((await mec.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'ya no', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    reloj.fijar(new Date('2026-11-10T09:00:00Z'));
+    expect((await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'mañana', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+  });
+
+  it('un vehículo sin puesto solo lo cambia el jefe', async () => {
+    const { jefe, mec, orden } = await ordenEnDiagnostico();
+    await prisma.ocupacionPuesto.deleteMany();
+    await prisma.orden.update({ where: { id: orden.id }, data: { puestoId: null } });
+    expect((await mec.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'x', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    expect((await jefe.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'x', interna: true })).status).toBe(201);
+  });
+
+  it('deshacer una pieza usada por error: vuelve al almacén, sale de la factura y queda constancia', async () => {
+    const { mec, ana, jefe, orden, partidas, pieza } = await ordenEnReparacion(['ACEPTADA']);
+    const uso = (await mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 2 })).body;
+    expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(1);
+    expect((await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({})).status).toBe(400); // sin motivo
+    expect((await ana.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'x' })).status).toBe(403);
+    const otro = await entrar('mec2@taller.test', 'MECANICO');
+    expect((await otro.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'x' })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+
+    const r = await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'Registrada en el trabajo equivocado' });
+    expect(r.status).toBe(200);
+    expect(r.body.stockRestante).toBe(3);
+    expect(await prisma.piezaUsada.count()).toBe(0);
+    const mov = await prisma.movimientoStock.findFirstOrThrow({ where: { tipo: 'ANULACION' } });
+    expect(mov).toMatchObject({ delta: 2, stockAntes: 1, stockDespues: 3, motivo: 'Registrada en el trabajo equivocado', ordenId: orden.id });
+    const constancia = await prisma.registroEliminacion.findFirstOrThrow({ where: { entidad: 'PiezaUsada' } });
+    expect(constancia).toMatchObject({ entidadId: uso.id, modo: 'BORRADO', motivo: 'Registrada en el trabajo equivocado' });
+    // El cliente lo ve en su línea de tiempo.
+    const eventos = (await ana.get(`/api/ordenes/${orden.id}`)).body.eventos.map((e: { tipo: string }) => e.tipo);
+    expect(eventos).toContain('PIEZA_ANULADA');
+    // Deshacerla otra vez: ya no está.
+    expect((await jefe.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'otra vez' })).status).toBe(404);
+  });
+
+  it('QA: una pieza no se deshace después de completar la orden (la factura ya está emitida)', async () => {
+    const { mec, orden, partidas, pieza } = await ordenEnReparacion(['ACEPTADA']);
+    const uso = (await mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 })).body;
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    // Con el trabajo terminado pero la orden aún en reparación, sí se puede.
+    const otra = (await prisma.piezaUsada.create({ data: { partidaId: partidas[0].id, piezaId: pieza.id, cantidad: 1, precioUnitarioCentimos: 5600, empleadoId: mec.empleadoId! } })).id;
+    expect((await mec.post(`/api/piezas-usadas/${otra}/anular`).send({ motivo: 'duplicada' })).status).toBe(200);
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98600 });
+    const r = await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'tarde' });
+    expect(r.status).toBe(409);
+    expect(await prisma.piezaUsada.count()).toBe(1);
   });
 
   it('el cliente no puede escribir en la orden', async () => {
@@ -154,13 +231,13 @@ describe('trabajo en la orden', () => {
     expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(3);
   });
 
-  it('QA: dos mecánicos cogen la última pieza a la vez → solo uno', async () => {
-    const { mec, partidas, pieza } = await ordenEnReparacion();
+  it('QA: el mecánico y el jefe cogen la última pieza a la vez → solo uno', async () => {
+    // El mecánico del puesto y el jefe a la vez (otro mecánico ya no puede tocar una orden que no está en su puesto).
+    const { mec, jefe, partidas, pieza } = await ordenEnReparacion();
     await prisma.pieza.update({ where: { id: pieza.id }, data: { stock: 1 } });
-    const otro = await entrar('mec2@taller.test', 'MECANICO');
     const [a, b] = await Promise.all([
       mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
-      otro.post(`/api/partidas/${partidas[1].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
+      jefe.post(`/api/partidas/${partidas[1].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
     expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(0);

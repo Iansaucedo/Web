@@ -38,3 +38,18 @@ export async function clienteListo(page: Page, email = 'ana@cliente.test', matri
 
 /** Instante ISO de una hora de Madrid en noviembre (UTC+1). */
 export const madrid = (dia: string, hhmm: string) => new Date(`${dia}T${hhmm}:00+01:00`).toISOString();
+
+/**
+ * Como jefe: asigna a Luis (mecanico@taller.test) el Puesto 1 el lunes 9 y recibe la cita en ese puesto.
+ * Un mecánico solo puede cambiar las órdenes de los puestos que tiene asignados ese día.
+ */
+export async function recibirEnPuesto1(page: Page, citaId: string, kmEntrada: number) {
+  await entrarComo(page, 'jefe@taller.test');
+  const puesto = (await (await page.request.get('/api/puestos')).json()).datos.find((p: { nombre: string }) => p.nombre === 'Puesto 1');
+  const luis = (await (await page.request.get('/api/mecanicos')).json()).datos.find((m: { email: string }) => m.email === 'mecanico@taller.test');
+  const a = await page.request.put('/api/asignaciones', { data: { fecha: '2026-11-09', puestoId: puesto.id, empleadoId: luis.empleadoId } });
+  expect(a.ok(), await a.text()).toBeTruthy();
+  const r = await page.request.post(`/api/citas/${citaId}/recibir`, { data: { kmEntrada, puestoId: puesto.id } });
+  expect(r.ok(), await r.text()).toBeTruthy();
+  return r.json();
+}

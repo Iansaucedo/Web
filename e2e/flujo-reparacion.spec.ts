@@ -46,6 +46,10 @@ test('flujo completo de una reparación', async ({ page, request }) => {
 
   await test.step('Jefe: confirma la cita y recibe el vehículo en un puesto', async () => {
     await entrarComo(page, 'jefe@taller.test');
+    // El jefe da hoy el Puesto 1 a Luis: así podrá trabajar en la orden.
+    const puesto = (await (await page.request.get('/api/puestos')).json()).datos.find((p: { nombre: string }) => p.nombre === 'Puesto 1');
+    const luis = (await (await page.request.get('/api/mecanicos')).json()).datos.find((m: { email: string }) => m.email === 'mecanico@taller.test');
+    expect((await page.request.put('/api/asignaciones', { data: { fecha: '2026-11-09', puestoId: puesto.id, empleadoId: luis.empleadoId } })).ok()).toBeTruthy();
     await page.goto('/jefe/citas');
     await page.getByRole('button', { name: 'Confirmar' }).click();
     await expect(page.getByTestId('cita')).toContainText('Confirmada');

@@ -48,16 +48,19 @@ Usa **Security → Report a vulnerability** en el repositorio de GitHub (aviso p
 
 | Riesgo | Por qué se acepta | Mitigación |
 |---|---|---|
-| **Modo de pruebas** (`NODE_ENV=test`): `POST /api/auth/test-login` entra con cualquier email sin Google, y las rutas `/api/test/*` (públicas) reinician la base de datos y cambian la hora del servidor. | Es un proyecto académico: permite probar y corregir todos los roles sin cuentas de Google. | Solo existe con `NODE_ENV=test`; en producción las rutas no se montan ni se documentan. **Nunca debe usarse con datos reales.** |
+| **Modo de pruebas** (`NODE_ENV=test`): `POST /api/auth/test-login` entra con cualquier email sin Google, y las rutas `/api/test/*` reinician la base de datos y cambian la hora del servidor. | Es un proyecto académico: permite probar y corregir todos los roles sin cuentas de Google. | Solo existe con `NODE_ENV=test`; en producción las rutas no se montan ni se documentan. Aun en modo test, solo responden desde la propia máquina (el socket y todas las IP de `X-Forwarded-For` locales) o con la cabecera `X-Pruebas-Secreto` igual a `PRUEBAS_SECRETO` (24+ caracteres); si no, 404. La API avisa en el log al arrancar. **Nunca debe usarse con datos reales.** |
 | **Secretos configurados a mano** en Azure (App Settings y secretos de GitHub). | Despliegue de un único entorno, sin gestor de secretos. | Ningún secreto en el repositorio ni en su historial; `JWT_SECRET` obligatorio en producción. |
 | **CSP con `'unsafe-inline'`** en scripts y estilos. | Next.js y MUI (emotion) insertan scripts y estilos en línea; usar nonces exigiría renderizar todo de forma dinámica. | Sin `unsafe-eval` en producción, `object-src 'none'`, `frame-ancestors 'none'`; React escapa todo el contenido. |
 | **Límites de peticiones en memoria** (por minuto y diarios): con varias instancias, cada una cuenta lo suyo, y al reiniciar la API los contadores vuelven a cero. | Despliegue de una sola instancia. | Con más instancias habría que moverlo a Redis o al frontal (Azure Front Door / WAF). |
 
 ## Decisiones de diseño
 
-- **El personal ve y trabaja en todas las órdenes abiertas**, no solo en las de sus puestos del día. Cada acción
-  (piezas usadas y retiradas, horas, pedidos, cambios de estado, observaciones) queda en la línea de tiempo de la orden
-  con quién y cuándo; cada foto guarda quién la subió.
+- **El personal ve todas las órdenes, pero un mecánico solo cambia las de los puestos que tiene asignados hoy**
+  (403 `ORDEN_DE_OTRO_PUESTO` en cualquier otra; un vehículo sin puesto solo lo cambia el jefe). El jefe y el dueño
+  cambian cualquiera. Cada acción (piezas usadas, retiradas o deshechas, horas, pedidos, cambios de estado,
+  observaciones) queda en la línea de tiempo de la orden con quién y cuándo; cada foto guarda quién la subió.
+- **Deshacer una pieza usada por error** devuelve las unidades al almacén con motivo, deja una constancia y un evento
+  visible para el cliente. Solo antes de completar la orden: una factura emitida no cambia.
 - **La matrícula y el bastidor son únicos en todo el sistema** (un vehículo físico es uno solo). Por eso, al registrar
   uno ya existente, la respuesta indica que ya está registrado, sin decir de quién. Si alguien registra un vehículo
   ajeno, el taller lo resuelve a mano.
