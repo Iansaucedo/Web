@@ -3,7 +3,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = process.env.OWNER_EMAIL;
+  // En minúsculas, como lo guarda el acceso con Google: si no, el dueño entraría como un cliente nuevo.
+  const email = process.env.OWNER_EMAIL?.trim().toLowerCase();
   if (!email) throw new Error('Falta OWNER_EMAIL');
 
   await prisma.usuario.upsert({

@@ -101,11 +101,12 @@ En la Web App de la API (`taller-api`):
 - `PUBLIC_WEB_URL`: `https://taller-web.azurewebsites.net`  
   *(Debe ser la URL pública del frontend Next.js, no de la API, para que la redirección tras el inicio de sesión fije la cookie en el dominio que ve el usuario).*
 
-> [!TIP]
-> **Modo Pruebas (sin Google):** Si necesitas probar el sistema en Azure o localmente sin configurar Google OAuth:
-> - Configura en la API: `NODE_ENV=test`
-> - Configura en la Web: `NEXT_PUBLIC_ACCESO_PRUEBAS=1`
-> Esto activará botones de acceso rápido directo en `/login` para entrar con roles de Cliente, Mecánico, Jefe o Dueño.
+> [!CAUTION]
+> **No actives el modo de pruebas (`NODE_ENV=test`) en el despliegue real.** Permite entrar como cualquier usuario sin
+> Google y borrar la base de datos. Úsalo solo en local o en un entorno de pruebas separado, con su propia base de datos
+> sin datos reales: ahí, configura en la API `NODE_ENV=test` y `PRUEBAS_SECRETO` (24+ caracteres, `openssl rand -base64 32`),
+> y en la Web `NEXT_PUBLIC_ACCESO_PRUEBAS=1`. El formulario de acceso de pruebas pide esa clave; sin ella, las rutas de
+> pruebas responden 404 a cualquier petición que no venga de la propia máquina.
 
 ---
 
@@ -114,12 +115,13 @@ En la Web App de la API (`taller-api`):
 Para desplegar la aplicación completa necesitarás:
 
 1. **Grupo de recursos**: ej. `rg-tallerpro` (en la región más cercana, ej. `West Europe` o `Spain Central`).
-2. **Azure Database for PostgreSQL (Flexible Server)**:
-   - Versión 16.
-   - Crea la base de datos `taller`.
-   - En *Seguridad de red*, permite el acceso a servicios de Azure (*Allow public access from any Azure service within Azure to this server*).
-   - Copia la cadena de conexión:
-     `postgresql://<usuario>:<password>@<servidor>.postgres.database.azure.com:5432/taller?sslmode=require`
+2. **PostgreSQL 16** (fuera de Azure en este despliegue; vale cualquier proveedor gestionado):
+   - Crea la base de datos `taller` y un usuario propio para la aplicación (no el administrador).
+   - Exige TLS y usa `sslmode=require` en la cadena de conexión:
+     `postgresql://<usuario>:<password>@<servidor>:5432/taller?sslmode=require`
+   - Si el proveedor lo permite, limita el acceso por IP a las IP de salida de la Web App de la API
+     (*Propiedades → Direcciones IP de salida*). Las migraciones se lanzan desde GitHub Actions, cuyas IP no son fijas:
+     o se abren solo durante el despliegue, o se ejecutan a mano con `npx prisma migrate deploy`.
 3. **Azure App Service Plan**:
    - Sistema Operativo: **Linux**.
    - Nivel: **B1** (Basic) o superior (los planes gratuitos no permiten websockets ni Always On).
@@ -136,7 +138,7 @@ Ve a cada Web App en Azure Portal > **Configuración / Variables de entorno** (*
 ### En `taller-api` (Backend Express):
 | Nombre | Valor de Ejemplo | Descripción |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://...` | Conexión con PostgreSQL en Azure |
+| `DATABASE_URL` | `postgresql://...?sslmode=require` | Conexión con PostgreSQL (fuera de Azure) |
 | `JWT_SECRET` | *(clave aleatoria de 32+ caracteres)* | Secreto para firmar cookies JWT. **Obligatorio** con `NODE_ENV=production`: sin él, o con menos de 32 caracteres, la API no arranca. Genera uno con `openssl rand -base64 48` |
 | `OWNER_EMAIL` | `dueno@taller.es` | Email del dueño para avisos |
 | `GOOGLE_CLIENT_ID` | `...` | OAuth 2.0 de Google (opcional) |
@@ -200,7 +202,8 @@ En tu repositorio de GitHub, ve a **Settings > Secrets and variables > Actions**
 El repositorio incluye dos flujos en `.github/workflows/`:
 
 1. [`.github/workflows/deploy-azure.yml`](file:///.github/workflows/deploy-azure.yml) *(Principal)*:
-   - Se activa automáticamente al hacer **push a `main`** o manualmente con **Run workflow**.
+   - Se activa cuando el workflow **CI** termina bien en `main` (tipos, lint, tests de la API y E2E), con el commit que la pasó,
+     o manualmente con **Run workflow** (en ese caso ejecuta antes la CI).
    - Instala dependencias con `npm ci`.
    - Genera el cliente de Prisma y compila tanto API como Next.js Standalone.
    - Si `DATABASE_URL` está configurado en secrets, ejecuta las migraciones pendientes en PostgreSQL.

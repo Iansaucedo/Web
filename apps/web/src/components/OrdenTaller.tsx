@@ -27,7 +27,8 @@ import { ChipEstado } from './ChipEstado';
 import { LineaTiempo } from './LineaTiempo';
 import { useSesion } from './Sesion';
 import { api, mensajeError } from '../lib/api';
-import { useAccion, useDatos } from '../lib/hooks';
+import { useAccion, useDatos, useListado } from '../lib/hooks';
+import Autocomplete from '@mui/material/Autocomplete';
 import { ESTADO_ORDEN, ESTADO_PEDIDO, euros, fechaHora, horasMin } from '../lib/formato';
 import type { Lista, OrdenDetalle, Partida, Pieza, Puesto } from '../lib/tipos';
 
@@ -131,13 +132,19 @@ function NuevaSolicitud({ ordenId, tarifa, abierto, onCerrar, onHecho }: { orden
 
 function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Partida | null; abierto: boolean; onCerrar: () => void; onHecho: Recargar }) {
   const [tab, setTab] = useState(0);
-  const piezas = useDatos<Lista<Pieza>>(abierto ? '/piezas' : null);
-  const [piezaId, setPiezaId] = useState('');
+  // Buscador sobre el catálogo paginado de la API: con cientos de piezas no caben todas en un desplegable.
+  const [pieza, setPieza] = useState<Pieza | null>(null);
+  const [busqueda, setBusqueda] = useState('');
+  const etiqueta = (p: Pieza) => `${p.nombre} · ${p.referencia}`;
+  // Con una pieza elegida, el texto del campo es su etiqueta: no se usa como búsqueda.
+  const q = pieza && busqueda === etiqueta(pieza) ? '' : busqueda.trim();
+  const piezas = useListado<Pieza>(abierto ? '/piezas' : null, { q }, { enUrl: false, porPagina: 25, orden: 'nombre', dir: 'asc' });
+  const opciones = [...(pieza && !piezas.datos?.datos.some((p) => p.id === pieza.id) ? [pieza] : []), ...(piezas.datos?.datos ?? [])];
+  const piezaId = pieza?.id ?? '';
   const [cantidad, setCantidad] = useState('1');
   const [descripcion, setDescripcion] = useState('');
   const [destino, setDestino] = useState('DESECHADA');
   const { ejecutar, ocupado, error, limpiarError } = useAccion();
-  const pieza = piezas.datos?.datos.find((p) => p.id === piezaId);
   const n = Number(cantidad);
   const guardar = async () => {
     const ruta = ['piezas-usadas', 'piezas-quitadas', 'pedidos'][tab];
@@ -145,7 +152,8 @@ function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Part
       tab === 0 ? { piezaId, cantidad: n } : tab === 1 ? { descripcion, cantidad: n, destino } : piezaId ? { piezaId, cantidad: n } : { descripcionLibre: descripcion, cantidad: n };
     const ok = await ejecutar((clave) => api.post(`/partidas/${partida!.id}/${ruta}`, cuerpo, { claveIdempotencia: clave }), ['Pieza registrada', 'Pieza retirada registrada', 'Pedido enviado al jefe'][tab]);
     if (ok) {
-      setPiezaId('');
+      setPieza(null);
+      setBusqueda('');
       setDescripcion('');
       setCantidad('1');
       onCerrar();
@@ -161,14 +169,38 @@ function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Part
         <Tab label="Pedir" />
       </Tabs>
       {tab !== 1 && (
-        <TextField select label={tab === 2 ? 'Pieza del catálogo (opcional)' : 'Pieza'} value={piezaId} onChange={(e) => setPiezaId(e.target.value)}>
-          {tab === 2 && <MenuItem value="">No está en el catálogo</MenuItem>}
-          {piezas.datos?.datos.map((p) => (
-            <MenuItem key={p.id} value={p.id} disabled={tab === 0 && p.stock === 0}>
+        <Autocomplete
+          options={opciones}
+          value={pieza}
+          onChange={(_, v) => setPieza(v)}
+          inputValue={busqueda}
+          onInputChange={(_, v) => setBusqueda(v)}
+          filterOptions={(x) => x}
+          getOptionLabel={etiqueta}
+          getOptionDisabled={(p) => tab === 0 && p.stock === 0}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          loading={piezas.cargando}
+          loadingText="Buscando…"
+          noOptionsText="Ninguna pieza coincide"
+          renderOption={({ key, ...props }, p) => (
+            <li key={key} {...props}>
               {p.nombre} · {p.referencia} · {p.stock} en stock · {euros(p.precioCentimos)}
-            </MenuItem>
-          ))}
-        </TextField>
+            </li>
+          )}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={tab === 2 ? 'Pieza del catálogo (opcional)' : 'Pieza'}
+              helperText={
+                piezas.datos && piezas.datos.total > piezas.datos.datos.length
+                  ? `Se muestran ${piezas.datos.datos.length} de ${piezas.datos.total}: escribe la referencia o el nombre para buscar`
+                  : tab === 2
+                    ? 'Déjalo vacío si la pieza no está en el catálogo'
+                    : undefined
+              }
+            />
+          )}
+        />
       )}
       {(tab === 1 || (tab === 2 && !piezaId)) && <TextField label={tab === 1 ? '¿Qué has quitado?' : 'Describe la pieza'} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />}
       <TextField label="Cantidad" type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} inputProps={{ min: 1, max: 100 }} error={tab === 0 && Boolean(pieza) && pieza!.stock < n} helperText={tab === 0 && pieza && pieza.stock < n ? `Solo hay ${pieza.stock}. Pídela en la pestaña «Pedir»` : undefined} />
@@ -188,6 +220,8 @@ function TrabajoAceptado({ p, ordenId, editable, onHecho }: { p: Partida; ordenI
   const [terminar, setTerminar] = useState(false);
   const [minutos, setMinutos] = useState('60');
   const [nota, setNota] = useState('');
+  const [anular, setAnular] = useState<Partida['piezasUsadas'][number] | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
   const acc = useAccion();
   return (
     <Box>
@@ -203,7 +237,16 @@ function TrabajoAceptado({ p, ordenId, editable, onHecho }: { p: Partida; ordenI
       <MiniaturasFotos fotos={p.fotos} trabajo={p.descripcion} tamano={56} />
       {(p.piezasUsadas.length > 0 || p.piezasQuitadas.length > 0 || p.pedidos.length > 0) && (
         <Stack sx={{ mt: 1, pl: 1 }} spacing={0.5}>
-          {p.piezasUsadas.map((u) => <Typography key={u.id} variant="body2">+ {u.cantidad} × {u.pieza} ({u.mecanico})</Typography>)}
+          {p.piezasUsadas.map((u) => (
+            <Stack key={u.id} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Typography variant="body2">+ {u.cantidad} × {u.pieza} ({u.mecanico})</Typography>
+              {editable && (
+                <Button size="small" color="error" sx={{ minWidth: 0, py: 0 }} aria-label={`Deshacer ${u.cantidad} × ${u.pieza}`} onClick={() => { setMotivoAnular(''); acc.limpiarError(); setAnular(u); }}>
+                  Deshacer
+                </Button>
+              )}
+            </Stack>
+          ))}
           {p.piezasQuitadas.map((q) => <Typography key={q.id} variant="body2">− {q.cantidad} × {q.descripcion} · {q.destino === 'DESECHADA' ? 'desechada' : 'para el cliente'}</Typography>)}
           {p.pedidos.map((x) => <Stack key={x.id} direction="row" spacing={1} sx={{ alignItems: 'center' }}><Typography variant="body2">Pedido: {x.cantidad} × {x.pieza}</Typography><ChipEstado {...ESTADO_PEDIDO[x.estado]} /></Stack>)}
         </Stack>
@@ -215,6 +258,23 @@ function TrabajoAceptado({ p, ordenId, editable, onHecho }: { p: Partida; ordenI
           <Button size="small" onClick={() => setTerminar(true)}>Marcar terminado</Button>
         </Stack>
       )}
+      <Confirmar
+        abierto={Boolean(anular)}
+        titulo="¿Deshacer la pieza usada?"
+        textoConfirmar="Deshacer"
+        peligro
+        ocupado={acc.ocupado}
+        error={acc.error}
+        deshabilitado={!motivoAnular.trim()}
+        onCerrar={() => setAnular(null)}
+        onConfirmar={async () => {
+          const ok = await acc.ejecutar(() => api.post(`/piezas-usadas/${anular!.id}/anular`, { motivo: motivoAnular }), 'Pieza quitada del trabajo. Las unidades vuelven al almacén');
+          if (ok) { setAnular(null); await onHecho(); }
+        }}
+      >
+        <Typography>{anular?.cantidad} × {anular?.pieza} vuelve al almacén y sale del trabajo y de la factura. El cliente lo verá en la línea de tiempo.</Typography>
+        <TextField label="Motivo" required value={motivoAnular} onChange={(e) => setMotivoAnular(e.target.value)} inputProps={{ maxLength: 200 }} helperText="Ejemplo: registrada en el trabajo equivocado" />
+      </Confirmar>
       <Confirmar
         abierto={horas}
         titulo="Registrar horas"
@@ -313,7 +373,9 @@ export function OrdenTaller({ id }: { id: string }) {
   return (
     <Carga {...orden}>
       {(o) => {
-        const editable = o.estado === 'EN_REPARACION' || o.estado === 'ESPERANDO_PIEZAS';
+        // Un mecánico solo cambia las órdenes de sus puestos de hoy; las demás las consulta.
+        const puede = o.puedoModificar;
+        const editable = puede && (o.estado === 'EN_REPARACION' || o.estado === 'ESPERANDO_PIEZAS');
         const partidas = o.solicitudes.flatMap((s) => s.partidas);
         const recargar = orden.recargar;
         const entregaLocal = o.entregaEstimada ? new Date(new Date(o.entregaEstimada).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
@@ -325,6 +387,9 @@ export function OrdenTaller({ id }: { id: string }) {
               acciones={<ChipEstado {...ESTADO_ORDEN[o.estado]} />}
             />
             {acc.error && <Alert severity="error" sx={{ mb: 2 }} onClose={acc.limpiarError}>{acc.error}</Alert>}
+            {!puede && o.estado !== 'ENTREGADA' && (
+              <Alert severity="info" sx={{ mb: 2 }}>Este vehículo está en un puesto que no tienes asignado hoy: puedes consultar la orden, pero no cambiarla. Si te toca, pide al jefe que te asigne el puesto.</Alert>
+            )}
             <Grid container spacing={3}>
               <Grid size={{ xs: 12, md: 7 }}>
                 <Stack spacing={3}>
@@ -333,9 +398,9 @@ export function OrdenTaller({ id }: { id: string }) {
                       <Stack spacing={2}>
                         <Typography variant="h6">Diagnóstico</Typography>
                         <Typography variant="body2" color="text.secondary">El cliente dijo: «{o.descripcionProblema}»{o.notasRecepcion ? ` · Recepción: ${o.notasRecepcion}` : ''}</Typography>
-                        <TextField label="Diagnóstico" multiline minRows={2} value={diagnostico ?? o.diagnostico ?? ''} onChange={(e) => setDiagnostico(e.target.value)} disabled={o.estado === 'ENTREGADA'} />
-                        <TextField label="Entrega estimada (la ve el cliente)" type="datetime-local" value={entrega ?? entregaLocal} onChange={(e) => setEntrega(e.target.value)} InputLabelProps={{ shrink: true }} disabled={o.estado === 'ENTREGADA'} />
-                        <Button
+                        <TextField label="Diagnóstico" multiline minRows={2} value={diagnostico ?? o.diagnostico ?? ''} onChange={(e) => setDiagnostico(e.target.value)} disabled={o.estado === 'ENTREGADA' || !puede} />
+                        <TextField label="Entrega estimada (la ve el cliente)" type="datetime-local" value={entrega ?? entregaLocal} onChange={(e) => setEntrega(e.target.value)} InputLabelProps={{ shrink: true }} disabled={o.estado === 'ENTREGADA' || !puede} />
+                        {puede && <Button
                           variant="tonal"
                           sx={{ alignSelf: 'flex-start' }}
                           disabled={acc.ocupado || (diagnostico === null && entrega === null)}
@@ -345,7 +410,7 @@ export function OrdenTaller({ id }: { id: string }) {
                           }}
                         >
                           Guardar
-                        </Button>
+                        </Button>}
                       </Stack>
                     </CardContent>
                   </Card>
@@ -354,7 +419,7 @@ export function OrdenTaller({ id }: { id: string }) {
                     <CardContent>
                       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="h6">Trabajos</Typography>
-                        <Button variant="contained" disabled={!(o.estado === 'EN_DIAGNOSTICO' || o.estado === 'EN_REPARACION')} onClick={() => solicitud.abrir(true)}>Pedir autorización</Button>
+                        <Button variant="contained" disabled={!puede || !(o.estado === 'EN_DIAGNOSTICO' || o.estado === 'EN_REPARACION')} onClick={() => solicitud.abrir(true)}>Pedir autorización</Button>
                       </Stack>
                       {o.estado === 'ESPERANDO_AUTORIZACION' && <Alert severity="warning" sx={{ mb: 2 }}>Esperando la respuesta del cliente.</Alert>}
                       {!partidas.length && <Typography color="text.secondary">Aún no hay trabajos propuestos.</Typography>}
@@ -374,15 +439,15 @@ export function OrdenTaller({ id }: { id: string }) {
                   </Card>
 
                   <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                    {o.estado === 'EN_REPARACION' && <Button variant="outlined" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/ordenes/${o.id}/estado`, { estado: 'ESPERANDO_PIEZAS' }), 'El cliente sabrá que esperamos piezas'); await recargar(); }}>Esperando piezas</Button>}
-                    {o.estado === 'ESPERANDO_PIEZAS' && <Button variant="contained" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/ordenes/${o.id}/estado`, { estado: 'EN_REPARACION' }), 'Reparación reanudada'); await recargar(); }}>Reanudar reparación</Button>}
-                    {(o.estado === 'EN_REPARACION' || o.estado === 'ESPERANDO_PIEZAS') && (
+                    {puede && o.estado === 'EN_REPARACION' && <Button variant="outlined" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/ordenes/${o.id}/estado`, { estado: 'ESPERANDO_PIEZAS' }), 'El cliente sabrá que esperamos piezas'); await recargar(); }}>Esperando piezas</Button>}
+                    {puede && o.estado === 'ESPERANDO_PIEZAS' && <Button variant="contained" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/ordenes/${o.id}/estado`, { estado: 'EN_REPARACION' }), 'Reparación reanudada'); await recargar(); }}>Reanudar reparación</Button>}
+                    {editable && (
                       <Tooltip title={o.motivoNoCompletable ?? ''}>
                         <span><Button variant="contained" color="success" disabled={Boolean(o.motivoNoCompletable)} onClick={() => { setKmSalida(''); completar.abrir(true); }}>Marcar completada</Button></span>
                       </Tooltip>
                     )}
                     {gestion && (o.estado === 'COMPLETADA' || o.estado === 'RECHAZADA') && <Button variant="contained" onClick={() => { setKmSalida(o.kmSalida !== null ? String(o.kmSalida) : ''); entregar.abrir(true); }}>Entregar vehículo</Button>}
-                    {o.estado !== 'ENTREGADA' && <Button onClick={() => obs.abrir(true)}>Añadir observación</Button>}
+                    {puede && o.estado !== 'ENTREGADA' && <Button onClick={() => obs.abrir(true)}>Añadir observación</Button>}
                     {gestion && o.estado !== 'ENTREGADA' && puestos.datos && (
                       <TextField
                         select
@@ -399,7 +464,7 @@ export function OrdenTaller({ id }: { id: string }) {
                     )}
                   </Stack>
                   {o.motivoNoCompletable && editable && <Typography variant="body2" color="text.secondary">Para completar: {o.motivoNoCompletable.toLowerCase()}.</Typography>}
-                  {o.factura && <Alert severity="success" action={<Button color="inherit" href={`/api/ordenes/${o.id}/factura.pdf`} target="_blank">PDF</Button>}>Factura: {euros(o.factura.total)} IVA incluido</Alert>}
+                  {o.factura && <Alert severity="success" action={<Button color="inherit" href={`/api/ordenes/${o.id}/factura.pdf`} target="_blank">PDF</Button>}>Factura{o.factura.codigo ? ` ${o.factura.codigo}` : ''}: {euros(o.factura.total)} IVA incluido</Alert>}
 
                   {o.observaciones.length > 0 && (
                     <Card>

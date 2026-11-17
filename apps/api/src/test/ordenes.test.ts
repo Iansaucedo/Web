@@ -28,6 +28,7 @@ describe('ver órdenes', () => {
 
   it('el mecánico ve las órdenes abiertas de sus puestos de hoy', async () => {
     const { jefe, mec, orden, puesto } = await ordenEnDiagnostico();
+    await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: null });
     expect((await mec.get('/api/ordenes?mias=true')).body.datos).toHaveLength(0);
     await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: mec.empleadoId });
     expect((await mec.get('/api/ordenes?mias=true')).body.datos.map((o: { id: string }) => o.id)).toEqual([orden.id]);
@@ -40,6 +41,82 @@ describe('ver órdenes', () => {
     await mec.post(`/api/ordenes/${orden.id}/trabajos`).send({ partidaId: partidas[0].id, minutos: 30, descripcion: 'Desmontar ruedas' });
     expect((await mec.get('/api/ordenes?trabajadas=true')).body.datos.map((o: { id: string }) => o.id)).toEqual([orden.id]);
     expect((await otro.get('/api/ordenes?trabajadas=true')).body.datos).toHaveLength(0);
+  });
+
+  it('un mecánico consulta cualquier orden, pero solo cambia las de sus puestos de hoy; el jefe, todas', async () => {
+    const { jefe, mec, orden, puesto } = await ordenEnReparacion();
+    const otro = await entrar('mec2@taller.test', 'MECANICO');
+    const vista = await otro.get(`/api/ordenes/${orden.id}`);
+    expect(vista.status).toBe(200);
+    expect(vista.body.puedoModificar).toBe(false);
+    expect((await mec.get(`/api/ordenes/${orden.id}`)).body.puedoModificar).toBe(true);
+    expect((await jefe.get(`/api/ordenes/${orden.id}`)).body.puedoModificar).toBe(true);
+    const partida = vista.body.solicitudes[0].partidas[0].id;
+    for (const r of [
+      await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'hola', interna: true }),
+      await otro.post(`/api/ordenes/${orden.id}/trabajos`).send({ partidaId: partida, minutos: 30, descripcion: 'x' }),
+      await otro.patch(`/api/ordenes/${orden.id}`).send({ diagnostico: 'x' }),
+      await otro.post(`/api/ordenes/${orden.id}/estado`).send({ estado: 'ESPERANDO_PIEZAS' }),
+      await otro.post(`/api/partidas/${partida}/terminar`).send({}),
+      await otro.post(`/api/partidas/${partida}/pedidos`).send({ descripcionLibre: 'Junta', cantidad: 1 }),
+    ]) {
+      expect(r.status).toBe(403);
+      expect(r.body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    }
+    expect(await prisma.observacion.count()).toBe(0);
+    // El jefe sí, aunque no tenga puesto.
+    expect((await jefe.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'hola', interna: true })).status).toBe(201);
+    // Si el jefe le da el puesto, ya puede; y una asignación de otro día no cuenta.
+    await jefe.put('/api/asignaciones').send({ fecha: '2026-11-09', puestoId: puesto.id, empleadoId: otro.empleadoId });
+    expect((await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'ya es mío', interna: true })).status).toBe(201);
+    expect((await mec.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'ya no', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    reloj.fijar(new Date('2026-11-10T09:00:00Z'));
+    expect((await otro.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'mañana', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+  });
+
+  it('un vehículo sin puesto solo lo cambia el jefe', async () => {
+    const { jefe, mec, orden } = await ordenEnDiagnostico();
+    await prisma.ocupacionPuesto.deleteMany();
+    await prisma.orden.update({ where: { id: orden.id }, data: { puestoId: null } });
+    expect((await mec.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'x', interna: true })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+    expect((await jefe.post(`/api/ordenes/${orden.id}/observaciones`).send({ texto: 'x', interna: true })).status).toBe(201);
+  });
+
+  it('deshacer una pieza usada por error: vuelve al almacén, sale de la factura y queda constancia', async () => {
+    const { mec, ana, jefe, orden, partidas, pieza } = await ordenEnReparacion(['ACEPTADA']);
+    const uso = (await mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 2 })).body;
+    expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(1);
+    expect((await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({})).status).toBe(400); // sin motivo
+    expect((await ana.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'x' })).status).toBe(403);
+    const otro = await entrar('mec2@taller.test', 'MECANICO');
+    expect((await otro.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'x' })).body.codigo).toBe('ORDEN_DE_OTRO_PUESTO');
+
+    const r = await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'Registrada en el trabajo equivocado' });
+    expect(r.status).toBe(200);
+    expect(r.body.stockRestante).toBe(3);
+    expect(await prisma.piezaUsada.count()).toBe(0);
+    const mov = await prisma.movimientoStock.findFirstOrThrow({ where: { tipo: 'ANULACION' } });
+    expect(mov).toMatchObject({ delta: 2, stockAntes: 1, stockDespues: 3, motivo: 'Registrada en el trabajo equivocado', ordenId: orden.id });
+    const constancia = await prisma.registroEliminacion.findFirstOrThrow({ where: { entidad: 'PiezaUsada' } });
+    expect(constancia).toMatchObject({ entidadId: uso.id, modo: 'BORRADO', motivo: 'Registrada en el trabajo equivocado' });
+    // El cliente lo ve en su línea de tiempo.
+    const eventos = (await ana.get(`/api/ordenes/${orden.id}`)).body.eventos.map((e: { tipo: string }) => e.tipo);
+    expect(eventos).toContain('PIEZA_ANULADA');
+    // Deshacerla otra vez: ya no está.
+    expect((await jefe.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'otra vez' })).status).toBe(404);
+  });
+
+  it('QA: una pieza no se deshace después de completar la orden (la factura ya está emitida)', async () => {
+    const { mec, orden, partidas, pieza } = await ordenEnReparacion(['ACEPTADA']);
+    const uso = (await mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 })).body;
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    // Con el trabajo terminado pero la orden aún en reparación, sí se puede.
+    const otra = (await prisma.piezaUsada.create({ data: { partidaId: partidas[0].id, piezaId: pieza.id, cantidad: 1, precioUnitarioCentimos: 5600, empleadoId: mec.empleadoId! } })).id;
+    expect((await mec.post(`/api/piezas-usadas/${otra}/anular`).send({ motivo: 'duplicada' })).status).toBe(200);
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98600 });
+    const r = await mec.post(`/api/piezas-usadas/${uso.id}/anular`).send({ motivo: 'tarde' });
+    expect(r.status).toBe(409);
+    expect(await prisma.piezaUsada.count()).toBe(1);
   });
 
   it('el cliente no puede escribir en la orden', async () => {
@@ -154,13 +231,13 @@ describe('trabajo en la orden', () => {
     expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(3);
   });
 
-  it('QA: dos mecánicos cogen la última pieza a la vez → solo uno', async () => {
-    const { mec, partidas, pieza } = await ordenEnReparacion();
+  it('QA: el mecánico y el jefe cogen la última pieza a la vez → solo uno', async () => {
+    // El mecánico del puesto y el jefe a la vez (otro mecánico ya no puede tocar una orden que no está en su puesto).
+    const { mec, jefe, partidas, pieza } = await ordenEnReparacion();
     await prisma.pieza.update({ where: { id: pieza.id }, data: { stock: 1 } });
-    const otro = await entrar('mec2@taller.test', 'MECANICO');
     const [a, b] = await Promise.all([
       mec.post(`/api/partidas/${partidas[0].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
-      otro.post(`/api/partidas/${partidas[1].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
+      jefe.post(`/api/partidas/${partidas[1].id}/piezas-usadas`).send({ piezaId: pieza.id, cantidad: 1 }),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 409]);
     expect((await prisma.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock).toBe(0);
@@ -265,7 +342,7 @@ describe('completar, factura y entrega', () => {
     expect(r.status).toBe(200);
     expect(r.body.estado).toBe('COMPLETADA');
     const detalle = (await ana.get(`/api/ordenes/${orden.id}`)).body;
-    expect(detalle.factura).toEqual({ base: 5600 + 6000, iva: 2436, total: 14036, lineas: expect.any(Array) });
+    expect(detalle.factura).toEqual({ codigo: 'F-2026-0001', base: 5600 + 6000, iva: 2436, total: 14036, lineas: expect.any(Array) });
     const email = (await emailsA('ana@cliente.test')).find((e) => e.plantilla === 'ORDEN_COMPLETADA');
     expect(email?.adjuntoFacturaOrdenId).toBe(orden.id);
     const pdf = await ana.get(`/api/ordenes/${orden.id}/factura.pdf`).buffer(true).parse((res, cb) => {
@@ -353,7 +430,46 @@ describe('completar, factura y entrega', () => {
     await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
     await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
     const { calcularFactura, lineaVehiculo } = await import('../modulos/factura');
-    expect(lineaVehiculo((await calcularFactura(orden.id)).orden)).toBe('Vehículo: Volkswagen Golf · 1234ABC · 98.500 km a la entrada · 98.512 km a la salida');
+    expect(lineaVehiculo(await calcularFactura(orden.id))).toBe('Vehículo: Volkswagen Golf · 1234ABC · 98.500 km a la entrada · 98.512 km a la salida');
+  });
+
+  it('la factura recibe su número propio al completar y ya no cambia aunque se editen cliente, vehículo o piezas', async () => {
+    const { mec, ana, jefe, orden, partidas } = await lista();
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
+    const antes = (await ana.get(`/api/ordenes/${orden.id}`)).body.factura;
+    expect(antes.codigo).toBe('F-2026-0001');
+    const pdfAntes = await ana.get(`/api/ordenes/${orden.id}/factura.pdf`);
+    expect(pdfAntes.headers['content-disposition']).toContain('Factura-F-2026-0001.pdf');
+    // Cambios posteriores: perfil del cliente, nombre y precio de la pieza, tarifa e IVA.
+    await ana.put('/api/perfil').send({ tipo: 'EMPRESA', telefono: '600999888', razonSocial: 'Otra Razón SL', nif: 'B87654321' });
+    const piezas = await prisma.pieza.findMany();
+    for (const p of piezas) await jefe.patch(`/api/piezas/${p.id}`).send({ nombre: `${p.nombre} RENOMBRADA`, precioCentimos: p.precioCentimos * 3 });
+    await prisma.configTaller.update({ where: { id: 1 }, data: { tarifaHoraCentimos: 99_00, ivaPorcentaje: 10 } });
+    const despues = (await ana.get(`/api/ordenes/${orden.id}`)).body.factura;
+    expect(despues).toEqual(antes);
+    const { calcularFactura } = await import('../modulos/factura');
+    const f = await calcularFactura(orden.id);
+    expect(f.cliente.nombre).not.toBe('Otra Razón SL');
+    expect(f.lineas.some((l) => l.concepto.includes('RENOMBRADA'))).toBe(false);
+    const email = await prisma.emailSaliente.findFirstOrThrow({ where: { plantilla: 'ORDEN_COMPLETADA' } });
+    expect((email.datos as { factura: string }).factura).toBe('F-2026-0001');
+  });
+
+  it('QA: los números de factura son correlativos y empiezan de nuevo cada año', async () => {
+    const { codigoFactura, emitirFactura } = await import('../modulos/factura');
+    expect(codigoFactura(2026, 7)).toBe('F-2026-0007');
+    expect(codigoFactura(2026, 12345)).toBe('F-2026-12345');
+    const { mec, orden, partidas } = await lista();
+    await mec.post(`/api/partidas/${partidas[0].id}/terminar`).send({});
+    await mec.post(`/api/ordenes/${orden.id}/completar`).send({ kmSalida: 98512 });
+    // Emisiones simultáneas: cada una recibe un número distinto y sin huecos.
+    const emitir = (ahora: Date) => prisma.$transaction((tx) => emitirFactura(tx, orden.id, ahora));
+    const codigos = (await Promise.all([1, 2, 3].map(() => emitir(new Date('2026-12-31T12:00:00Z'))))).map((f) => f.codigo).sort();
+    expect(codigos).toEqual(['F-2026-0002', 'F-2026-0003', 'F-2026-0004'].sort());
+    // El 31 de diciembre a las 23:30 en Madrid (22:30 UTC) aún es 2026; a las 00:30 ya es 2027.
+    expect((await emitir(new Date('2026-12-31T22:30:00Z'))).codigo).toBe('F-2026-0005');
+    expect((await emitir(new Date('2026-12-31T23:30:00Z'))).codigo).toBe('F-2027-0001');
   });
 
   it('esperar piezas y reanudar avisan al cliente', async () => {

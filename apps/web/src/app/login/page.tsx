@@ -22,6 +22,7 @@ import { api, mensajeError } from '../../lib/api';
 const ERRORES: Record<string, string> = {
   CUENTA_DESACTIVADA: 'Tu cuenta está dada de baja. Habla con el taller.',
   SIN_EMAIL: 'Google no nos ha dado un email verificado.',
+  OTRA_CUENTA_GOOGLE: 'Ese email ya está ligado a otra cuenta de Google. Habla con el taller.',
   GOOGLE: 'No se ha podido entrar con Google. Inténtalo de nuevo.',
 };
 const VENTAJAS = [
@@ -38,6 +39,7 @@ function Login() {
   // Solo rutas de esta web: «//otro.com» o «/\otro.com» (el navegador trata «\» como «/») irían a otro dominio.
   const destino = volver && /^\/(?![/\\])/.test(volver) && !volver.includes('\\') ? volver : '/';
   const [email, setEmail] = useState('');
+  const [clave, setClave] = useState('');
   const [fallo, setFallo] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const pruebas = process.env.NEXT_PUBLIC_ACCESO_PRUEBAS === '1';
@@ -46,7 +48,7 @@ function Login() {
     e.preventDefault();
     setOcupado(true);
     try {
-      await api.post('/auth/test-login', { email });
+      await api.post('/auth/test-login', { email }, clave ? { cabeceras: { 'X-Pruebas-Secreto': clave } } : undefined);
       window.location.href = destino;
     } catch (err) {
       setFallo(mensajeError(err));
@@ -91,6 +93,7 @@ function Login() {
                   <Divider sx={{ mb: 2 }}>Solo entorno de pruebas</Divider>
                   <Stack spacing={1.5}>
                     <TextField label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <TextField label="Clave de pruebas" type="password" value={clave} onChange={(e) => setClave(e.target.value)} helperText="Solo si la API no está en este equipo (PRUEBAS_SECRETO)" autoComplete="off" />
                     {fallo && <Alert severity="error">{fallo}</Alert>}
                     <Button type="submit" variant="tonal" disabled={ocupado}>Entrar sin Google</Button>
                   </Stack>

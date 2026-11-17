@@ -58,7 +58,8 @@ Entrad siempre por `http://localhost:3000`: el login y la cookie pasan por el re
 
 ## Despliegue en Azure (CI/CD con GitHub Actions)
 
-El proyecto incluye flujos de trabajo de **GitHub Actions** para compilar, migrar la base de datos y desplegar la API y la Web en **Azure App Service**:
+El proyecto incluye flujos de trabajo de **GitHub Actions** para comprobar, compilar, migrar la base de datos y desplegar la API y la Web en **Azure App Service**:
+- CI en cada push y PR: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (migraciones, tipos, ESLint, tests de la API, `npm audit` y E2E). Los despliegues de `main` solo arrancan cuando la CI ha pasado, con ese mismo commit; a mano, ejecutan antes la CI.
 - Flujo principal: [`.github/workflows/deploy-azure.yml`](.github/workflows/deploy-azure.yml)
 - Flujo con contenedores Docker: [`.github/workflows/deploy-azure-containers.yml`](.github/workflows/deploy-azure-containers.yml)
 - Guía completa de configuración de recursos, secretos y servicio SMTP (SendGrid, Azure Communication Services, Office 365): [`docs/DESPLIEGUE_AZURE.md`](docs/DESPLIEGUE_AZURE.md).
@@ -66,14 +67,16 @@ El proyecto incluye flujos de trabajo de **GitHub Actions** para compilar, migra
 ## Tests
 
 ```bash
-npm test          # 270 tests de API: dominio + integración contra la base de datos taller_test
-npm run e2e       # 50 E2E con Playwright: flujos, QA, accesibilidad (axe) y móvil (base de datos taller_e2e)
+npm test          # 318 tests de API: dominio + integración contra la base de datos taller_test
+npm run e2e       # 59 E2E con Playwright: flujos, QA, paginación, accesibilidad (axe) y móvil (base de datos taller_e2e)
+npm run lint      # ESLint de todo el monorepo (también en la CI)
 npm run mutaciones  # rompe 27 reglas a propósito y comprueba que los tests fallan (docs/mutaciones.md)
 ```
 
 Bases de datos necesarias: `taller_test` y `taller_e2e` (usuario `taller`), con las migraciones aplicadas
 (`DATABASE_URL=... npx prisma migrate deploy`). En modo test existen `POST /api/auth/test-login` y
-`/api/test/*` (reiniciar datos, fijar la hora, ver los emails); en producción no se montan.
+`/api/test/*` (reiniciar datos, fijar la hora, ver los emails), que solo responden desde la propia máquina
+o con la cabecera `X-Pruebas-Secreto` igual a `PRUEBAS_SECRETO`; en producción no se montan.
 
 ## Fiabilidad
 
@@ -86,9 +89,15 @@ Bases de datos necesarias: `taller_test` y `taller_e2e` (usuario `taller`), con 
 - **Seguridad:** el rol se lee de la base de datos en cada petición (dar de baja corta la sesión al momento);
   un recurso ajeno da 404; las peticiones con cuerpo exigen JSON (CSRF); query estricta; límite de 100 KB; nunca se devuelven trazas.
   Detalle, riesgos aceptados y cómo informar de una vulnerabilidad: [`SECURITY.md`](SECURITY.md).
-- **Tareas periódicas:** envío de emails, recordatorio 24 h antes (cada 15 min), limpieza de fotos sin adjuntar y desvinculación de autobajas.
+- **Tareas periódicas:** envío de emails, recordatorio 24 h antes (cada 15 min), limpieza de fotos sin adjuntar, desvinculación de autobajas
+  y retención de datos (emails procesados a los 30 días, avisos leídos a los 180, constancias a los 6 años).
   Todas son idempotentes y seguras con varias instancias.
-- **Fotos:** `POST /api/fotos` con la imagen tal cual (JPEG, PNG o WebP, ≤ 5 MB); el formato se comprueba por los bytes.
+- **Fotos:** `POST /api/fotos` con la imagen tal cual (JPEG, PNG o WebP, ≤ 5 MB); el formato se comprueba por los bytes y la foto
+  se vuelve a codificar sin metadatos (EXIF, GPS), girada según su orientación y con 2560 px como máximo.
+- **Listados:** paginados en la API (`pagina`, `porPagina` = 10/25/50/100, `orden`, `dir`) con `total` y `paginas` en la respuesta;
+  en la web, tamaño de página, orden por columnas o por desplegable, primera/última página y salto directo, todo reflejado en la URL.
+- **Facturas:** al completar la orden reciben un número propio correlativo por año (`F-2026-0001`) y quedan congeladas:
+  editar luego el cliente, el vehículo, las piezas, la tarifa o el IVA no las cambia.
 - **Fechas:** franjas calculadas en hora de Madrid (el cambio de hora no las mueve); la hora la pone siempre el servidor.
 
 ## Usuarios de prueba

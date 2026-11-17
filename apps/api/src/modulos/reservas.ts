@@ -12,7 +12,11 @@ import { obtenerConfig } from '../servicios/config';
 import { esLaborable, franjasDelDia, libresEnFranja, ocupacionDia } from '../servicios/agenda';
 import { avisar, avisarRoles } from '../servicios/avisos';
 import { diaLargo, enumerar, hora, numeroReserva } from '../emails/formato';
-import { Dia, Id, Instante, ParamId, lista } from './esquemas';
+import { Dia, Id, Instante, ParamId } from './esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
+
+/** Cada cliente, como mucho 20 al día: cada una envía avisos y emails al taller. */
+const LIMITE_RESERVAS = { grupo: 'reservas', maximo: 20 };
 
 const EstadoReserva = z.enum(['EN_ESPERA', 'HUECO_OFRECIDO', 'CONVERTIDA', 'CANCELADA']);
 const ReservaSchema = z
@@ -78,17 +82,29 @@ definir({
   etiqueta: 'Reservas múltiples',
   resumen: 'Listar reservas múltiples',
   descripcion: 'La empresa ve las suyas; el personal, todas.',
-  query: z.object({ estado: EstadoReserva.optional() }),
-  respuesta: lista(ReservaSchema),
+  query: z.object({ estado: EstadoReserva.optional(), ...consultaPaginada(['creadaEn', 'estado', 'numero', 'convertidaEn']) }),
+  respuesta: listaPaginada(ReservaSchema),
   manejador: async ({ usuario, query }) => {
     const where: Prisma.ReservaMultipleWhereInput = { ...(esPersonal(usuario) ? {} : { cliente: { usuarioId: usuario.id } }), ...(query.estado ? { estado: query.estado } : {}) };
-    return { datos: (await prisma.reservaMultiple.findMany({ where, include: incluir, orderBy: { creadaEn: 'desc' }, take: 300 })).map(aReserva) };
+    const orderBy: Prisma.ReservaMultipleOrderByWithRelationInput[] = ordenar(
+      query,
+      {
+        creadaEn: (dir) => ({ creadaEn: dir }),
+        estado: (dir) => ({ estado: dir }),
+        numero: (dir) => ({ numero: dir }),
+        convertidaEn: (dir) => ({ convertidaEn: { sort: dir, nulls: 'last' } }),
+      },
+      { orden: 'creadaEn', dir: 'desc' },
+    );
+    const [total, r] = await Promise.all([prisma.reservaMultiple.count({ where }), prisma.reservaMultiple.findMany({ where, include: incluir, orderBy, ...saltoYTope(query) })]);
+    return pagina(r.map(aReserva), total, query);
   },
 });
 
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Pedir cita para varios vehículos el mismo día',
   descripcion: 'Solo empresas. El jefe busca un día con hueco para todos entre las fechas preferidas y lo ofrece.',
@@ -191,6 +207,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/aceptar',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Aceptar el día ofrecido',
   descripcion:
@@ -258,6 +275,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/rechazar-oferta',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Rechazar el día ofrecido sin cancelar la reserva',
   descripcion:
@@ -289,6 +307,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/reservas-multiples/:id/cancelar',
+  limiteDiario: LIMITE_RESERVAS,
   etiqueta: 'Reservas múltiples',
   resumen: 'Cancelar una reserva múltiple',
   descripcion: 'Mientras esté en espera o con hueco ofrecido. Una reserva ya convertida se gestiona cita a cita.',

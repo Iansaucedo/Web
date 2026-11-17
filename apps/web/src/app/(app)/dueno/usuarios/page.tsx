@@ -17,9 +17,10 @@ import { Cabecera, Carga, Confirmar, useDialogo } from '../../../../components/C
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { useSesion } from '../../../../components/Sesion';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useListado } from '../../../../lib/hooks';
+import { CeldaOrden, Paginacion } from '../../../../components/Paginacion';
 import { ROL } from '../../../../lib/formato';
-import type { Lista, Rol } from '../../../../lib/tipos';
+import type { Rol } from '../../../../lib/tipos';
 
 interface UsuarioAdmin { id: string; email: string; nombre: string; rol: Rol; activo: boolean }
 
@@ -27,7 +28,8 @@ export default function Usuarios() {
   const { usuario } = useSesion();
   const [rol, setRol] = useState('');
   const [q, setQ] = useState('');
-  const lista = useDatos<Lista<UsuarioAdmin>>(`/usuarios?${new URLSearchParams({ ...(rol ? { rol } : {}), ...(q ? { q } : {}) })}`);
+  const [activo, setActivo] = useState('');
+  const lista = useListado<UsuarioAdmin>('/usuarios', { rol, q: q.trim(), activo }, { orden: 'nombre', dir: 'asc' });
   const baja = useDialogo<UsuarioAdmin>();
   const invitar = useDialogo();
   const [email, setEmail] = useState('');
@@ -42,13 +44,26 @@ export default function Usuarios() {
           <MenuItem value="">Todos</MenuItem>
           {Object.entries(ROL).map(([k, v]) => <MenuItem key={k} value={k}>{v}</MenuItem>)}
         </TextField>
+        <TextField select label="Estado" value={activo} onChange={(e) => setActivo(e.target.value)} sx={{ maxWidth: 200 }}>
+          <MenuItem value="">Todos</MenuItem>
+          <MenuItem value="true">Activos</MenuItem>
+          <MenuItem value="false">De baja</MenuItem>
+        </TextField>
       </Stack>
       <Carga {...lista}>
         {(d) => (
           <Card>
             <TableContainer>
               <Table>
-                <TableHead><TableRow><TableCell>Nombre</TableCell><TableCell>Email</TableCell><TableCell>Rol</TableCell><TableCell>Estado</TableCell><TableCell /></TableRow></TableHead>
+                <TableHead>
+                  <TableRow>
+                    <CeldaOrden listado={lista} campo="nombre">Nombre</CeldaOrden>
+                    <CeldaOrden listado={lista} campo="email">Email</CeldaOrden>
+                    <CeldaOrden listado={lista} campo="rol">Rol</CeldaOrden>
+                    <TableCell>Estado</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableHead>
                 <TableBody>
                   {d.datos.map((u) => (
                     <TableRow key={u.id}>
@@ -77,6 +92,7 @@ export default function Usuarios() {
           </Card>
         )}
       </Carga>
+      <Paginacion listado={lista} nombre={['usuario', 'usuarios']} ordenes={[{ valor: 'nombre', texto: 'Nombre' }, { valor: 'email', texto: 'Email' }, { valor: 'rol', texto: 'Rol' }, { valor: 'creadoEn', texto: 'Fecha de alta', dir: 'desc' }]} />
       <Confirmar abierto={baja.abierto} titulo="¿Dar de baja?" textoConfirmar="Dar de baja" peligro ocupado={acc.ocupado} error={acc.error} onCerrar={() => { baja.cerrar(); acc.limpiarError(); }}
         onConfirmar={async () => { const ok = await acc.ejecutar(() => api.patch(`/usuarios/${baja.valor!.id}`, { activo: false }), 'Usuario dado de baja'); if (ok) { baja.cerrar(); void lista.recargar(); } }}>
         <Typography>{baja.valor?.nombre} ({baja.valor?.email}) perderá el acceso al momento. Su historial se conserva.</Typography>

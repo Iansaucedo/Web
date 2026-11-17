@@ -4,10 +4,11 @@ import { definir } from '../lib/ruta';
 import { prisma } from '../db';
 import { conflicto, reglaNegocio } from '../lib/errores';
 import { clienteDe, esPersonal, vehiculoAccesible } from '../servicios/acceso';
-import { Id, Instante, ParamId, lista, Centimos } from './esquemas';
+import { Id, Instante, ParamId, Centimos } from './esquemas';
 import { transaccion } from '../lib/transaccion';
 import { reloj } from '../lib/reloj';
 import { dejarConstancia } from '../servicios/constancias';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 
 const Matricula = z
   .string()
@@ -80,8 +81,8 @@ definir({
   etiqueta: 'Vehículos',
   resumen: 'Listar vehículos',
   descripcion: 'Un cliente ve los suyos. El personal ve todos y puede buscar por matrícula, marca, modelo o cliente (`q`).',
-  query: z.object({ q: z.string().max(60).optional(), incluirBajas: z.enum(['true', 'false']).optional() }),
-  respuesta: lista(VehiculoSchema),
+  query: z.object({ q: z.string().max(60).optional(), incluirBajas: z.enum(['true', 'false']).optional(), ...consultaPaginada(['matricula', 'marca', 'cliente', 'kilometros']) }),
+  respuesta: listaPaginada(VehiculoSchema),
   manejador: async ({ usuario, query }) => {
     const q = query.q?.trim();
     const where: Prisma.VehiculoWhereInput = esPersonal(usuario) ? {} : { cliente: { usuarioId: usuario.id } };
@@ -96,8 +97,18 @@ definir({
         { cliente: { razonSocial: { contains: q, mode: 'insensitive' } } },
       ];
     }
-    const datos = await prisma.vehiculo.findMany({ where, include: incluir, orderBy: { matricula: 'asc' }, take: 200 });
-    return { datos: datos.map(aVehiculo) };
+    const orderBy: Prisma.VehiculoOrderByWithRelationInput[] = ordenar(
+      query,
+      {
+        matricula: (dir) => ({ matricula: dir }),
+        marca: (dir) => ({ marca: dir }),
+        cliente: (dir) => ({ cliente: { usuario: { nombre: dir } } }),
+        kilometros: (dir) => ({ kilometros: { sort: dir, nulls: 'last' } }),
+      },
+      { orden: 'matricula', dir: 'asc' },
+    );
+    const [total, datos] = await Promise.all([prisma.vehiculo.count({ where }), prisma.vehiculo.findMany({ where, include: incluir, orderBy, ...saltoYTope(query) })]);
+    return pagina(datos.map(aVehiculo), total, query);
   },
 });
 

@@ -8,13 +8,14 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { Cabecera } from '../../../../components/Comunes';
 import { HistorialVehiculo } from '../../../../components/Historial';
-import { useDatos } from '../../../../lib/hooks';
-import type { Lista, Vehiculo } from '../../../../lib/tipos';
+import { useListado } from '../../../../lib/hooks';
+import { Paginacion } from '../../../../components/Paginacion';
+import type { Vehiculo } from '../../../../lib/tipos';
 
 export default function Trazabilidad() {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Vehiculo | null>(null);
-  const res = useDatos<Lista<Vehiculo>>(q.trim().length >= 2 ? `/vehiculos?q=${encodeURIComponent(q.trim())}` : null);
+  const res = useListado<Vehiculo>(q.trim().length >= 2 ? '/vehiculos' : null, { q: q.trim(), incluirBajas: 'true' }, { porPagina: 10, orden: 'matricula', dir: 'asc' });
   return (
     <>
       <Cabecera titulo="Trazabilidad" subtitulo="Qué piezas se pusieron y quitaron en cada vehículo, cuándo y quién." />
@@ -29,6 +30,7 @@ export default function Trazabilidad() {
             </Card>
           ))}
           {!res.datos.datos.length && <Typography color="text.secondary">Ningún vehículo coincide.</Typography>}
+          <Paginacion listado={res} nombre={['vehículo', 'vehículos']} ordenes={[{ valor: 'matricula', texto: 'Matrícula' }, { valor: 'cliente', texto: 'Cliente' }, { valor: 'marca', texto: 'Marca' }]} />
         </Stack>
       )}
       {sel && (

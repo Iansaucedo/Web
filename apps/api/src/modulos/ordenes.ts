@@ -1,4 +1,4 @@
-import type { EstadoOrden, Prisma } from '@prisma/client';
+import type { EstadoOrden, Prisma, Usuario } from '@prisma/client';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
@@ -12,13 +12,14 @@ import { empleadoDe, esPersonal, GESTION, PERSONAL } from '../servicios/acceso';
 import { obtenerConfig } from '../servicios/config';
 import { avisar } from '../servicios/avisos';
 import { registrarEvento } from '../servicios/eventos';
-import { bloquearOrden, datosVehiculo, ordenAccesible } from '../servicios/ordenes';
-import { calcularFactura, facturaPdf } from './factura';
+import { bloquearOrden, datosVehiculo, ordenAccesible, puedeModificar } from '../servicios/ordenes';
+import { calcularFactura, emitirFactura, facturaPdf } from './factura';
 import { adjuntarFotos, MAX_FOTOS_POR_TRABAJO, urlFoto } from '../servicios/fotos';
 import { colocarEnPuesto } from './citas';
 import { euros, fechaLarga, hora, numeroOrden } from '../emails/formato';
 import { fechaDb, diaLocal } from '../lib/fechas';
-import { Centimos, Id, Instante, ParamId, TextoLargo, lista } from './esquemas';
+import { Centimos, Id, Instante, ParamId, TextoLargo } from './esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 import { EstadoOrden as EstadoOrdenSchema, OrdenResumenSchema, aOrdenResumen, incluirResumen } from './ordenes-esquemas';
 
 const Importe = z.object({ base: Centimos, iva: Centimos, total: Centimos });
@@ -51,12 +52,13 @@ const OrdenDetalleSchema = OrdenResumenSchema.extend({
   descripcionProblema: z.string(),
   solicitudes: z.array(SolicitudSchema),
   presupuesto: Importe.openapi({ description: 'Estimado de los trabajos aceptados y pendientes, con IVA' }),
-  factura: Importe.extend({ lineas: z.array(z.object({ concepto: z.string(), cantidad: z.number(), precioUnitarioCentimos: Centimos, importeCentimos: Centimos })) })
+  factura: Importe.extend({ codigo: z.string().nullable().openapi({ example: 'F-2026-0001' }), lineas: z.array(z.object({ concepto: z.string(), cantidad: z.number(), precioUnitarioCentimos: Centimos, importeCentimos: Centimos })) })
     .nullable()
     .openapi({ description: 'Solo cuando está completada o entregada: piezas usadas y horas reales' }),
   observaciones: z.array(z.object({ id: Id, texto: z.string(), interna: z.boolean(), autor: z.string(), fecha: Instante })),
   eventos: z.array(z.object({ id: Id, tipo: z.string(), payload: z.record(z.string(), z.unknown()), actor: z.string(), fecha: Instante })),
   motivoNoCompletable: z.string().nullable().openapi({ description: 'Por qué aún no se puede marcar como completada (null si se puede)' }),
+  puedoModificar: z.boolean().openapi({ description: 'Quien llama puede cambiarla: jefe y dueño siempre; un mecánico, si está en un puesto que tiene asignado hoy' }),
 }).openapi('OrdenDetalle');
 
 const Km = z.number().int().min(0).max(2_000_000);
@@ -65,7 +67,8 @@ function comprobarKmSalida(kmEntrada: number, kmSalida: number) {
   if (kmSalida < kmEntrada) throw reglaNegocio('KM_MENOR', `Los kilómetros de salida no pueden ser menos que los de entrada (${kmEntrada.toLocaleString('es-ES')})`);
 }
 
-async function detalle(ordenId: string, verInterno: boolean) {
+async function detalle(ordenId: string, usuario: Usuario) {
+  const verInterno = esPersonal(usuario);
   const o = await prisma.orden.findUniqueOrThrow({
     where: { id: ordenId },
     include: {
@@ -97,7 +100,7 @@ async function detalle(ordenId: string, verInterno: boolean) {
   let factura = null;
   if (o.estado === 'COMPLETADA' || o.estado === 'ENTREGADA') {
     const f = await calcularFactura(o.id);
-    factura = { base: f.base, iva: f.iva, total: f.total, lineas: f.lineas };
+    factura = { codigo: f.codigo, base: f.base, iva: f.iva, total: f.total, lineas: f.lineas };
   }
   return {
     ...aOrdenResumen(o),
@@ -131,6 +134,7 @@ async function detalle(ordenId: string, verInterno: boolean) {
     observaciones: o.observaciones.map((x) => ({ id: x.id, texto: x.texto, interna: x.interna, autor: x.empleado.usuario.nombre, fecha: x.fecha })),
     eventos: o.eventos.map((e) => ({ id: e.id, tipo: e.tipo, payload: e.payload as Record<string, unknown>, actor: e.actor.nombre, fecha: e.fecha })),
     motivoNoCompletable: o.estado === 'EN_REPARACION' ? motivoNoCompletable(partidas) : 'Solo se completa una orden en reparación',
+    puedoModificar: await puedeModificar(prisma, usuario, o),
   };
 }
 
@@ -146,8 +150,9 @@ definir({
     mias: z.enum(['true', 'false']).optional(),
     trabajadas: z.enum(['true', 'false']).optional(),
     q: z.string().max(60).optional(),
+    ...consultaPaginada(['abiertaEn', 'numero', 'estado', 'entregaEstimada', 'matricula']),
   }),
-  respuesta: lista(OrdenResumenSchema),
+  respuesta: listaPaginada(OrdenResumenSchema),
   manejador: async ({ usuario, query }) => {
     const where: Prisma.OrdenWhereInput = esPersonal(usuario) ? {} : { cita: { cliente: { usuarioId: usuario.id } } };
     if (query.estado) where.estado = query.estado;
@@ -167,8 +172,19 @@ definir({
       where.OR = [{ vehiculo: { matricula: { contains: q.replace(/[\s-]/g, '').toUpperCase() } } }, { cita: { cliente: { usuario: { nombre: { contains: q, mode: 'insensitive' } } } } }];
       if (/^(OR-)?\d+$/i.test(q)) where.OR.push({ numero: Number(q.replace(/\D/g, '')) });
     }
-    const datos = await prisma.orden.findMany({ where, include: incluirResumen, orderBy: { abiertaEn: 'desc' }, take: 200 });
-    return { datos: datos.map(aOrdenResumen) };
+    const orderBy: Prisma.OrdenOrderByWithRelationInput[] = ordenar(
+      query,
+      {
+        abiertaEn: (dir) => ({ abiertaEn: dir }),
+        numero: (dir) => ({ numero: dir }),
+        estado: (dir) => ({ estado: dir }),
+        entregaEstimada: (dir) => ({ entregaEstimada: { sort: dir, nulls: 'last' } }),
+        matricula: (dir) => ({ vehiculo: { matricula: dir } }),
+      },
+      { orden: 'abiertaEn', dir: 'desc' },
+    );
+    const [total, datos] = await Promise.all([prisma.orden.count({ where }), prisma.orden.findMany({ where, include: incluirResumen, orderBy, ...saltoYTope(query) })]);
+    return pagina(datos.map(aOrdenResumen), total, query);
   },
 });
 
@@ -183,7 +199,7 @@ definir({
   errores: { 404: 'No existe o no es tuya' },
   manejador: async ({ usuario, params }) => {
     await ordenAccesible(usuario, params.id);
-    return detalle(params.id, esPersonal(usuario));
+    return detalle(params.id, usuario);
   },
 });
 
@@ -202,7 +218,7 @@ definir({
     const entrega: Date | null | undefined = cuerpo.entregaEstimada ? new Date(cuerpo.entregaEstimada) : (cuerpo.entregaEstimada as null | undefined);
     if (entrega && entrega < reloj.ahora()) throw reglaNegocio('ENTREGA_EN_PASADO', 'La entrega estimada no puede estar en el pasado');
     await transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA'], 'editar');
+      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA'], 'editar', usuario);
       await tx.orden.update({ where: { id: o.id }, data: { diagnostico: cuerpo.diagnostico, entregaEstimada: entrega } });
       if (entrega && entrega.getTime() !== o.entregaEstimada?.getTime()) {
         const c = await obtenerConfig(tx);
@@ -216,7 +232,7 @@ definir({
         });
       }
     });
-    return detalle(params.id, true);
+    return detalle(params.id, usuario);
   },
 });
 
@@ -232,7 +248,7 @@ definir({
   errores: { 404: 'La orden o el puesto no existen', 409: 'PUESTO_OCUPADO o la orden está entregada' },
   manejador: async ({ usuario, params, cuerpo }) => {
     await transaccion(async (tx) => {
-      await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA', 'RECHAZADA'], 'cambiar de puesto');
+      await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA', 'RECHAZADA'], 'cambiar de puesto', usuario);
       await colocarEnPuesto(tx, params.id, cuerpo.puestoId, usuario.id);
     });
     return aOrdenResumen(await prisma.orden.findUniqueOrThrow({ where: { id: params.id }, include: incluirResumen }));
@@ -270,7 +286,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     const id = await transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'EN_REPARACION'], 'pedir autorización');
+      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'EN_REPARACION'], 'pedir autorización', usuario);
       assertTransicion(o.estado, 'ESPERANDO_AUTORIZACION', usuario.rol === 'DUENO' ? 'JEFE' : usuario.rol);
       const c = await obtenerConfig(tx);
       const creada = await tx.solicitudAutorizacion.create({ data: { ordenId: o.id, creadaPorId: emp.id, creadaEn: reloj.ahora() } });
@@ -302,7 +318,7 @@ definir({
       });
       return s.id;
     });
-    const d = await detalle(params.id, true);
+    const d = await detalle(params.id, usuario);
     return d.solicitudes.find((s) => s.id === id)!;
   },
 });
@@ -369,7 +385,7 @@ definir({
         await avisar(tx, usuario.id, { tipo: 'ORDEN_RECHAZADA', mensaje: `${numeroOrden(o.numero)}: puedes recoger tu vehículo`, enlace: `/ordenes/${o.id}`, datos: datosVehiculo(o) });
       }
     });
-    return detalle(s.ordenId, false);
+    return detalle(s.ordenId, usuario);
   },
 });
 
@@ -385,7 +401,7 @@ definir({
   errores: { 404: 'La orden no existe', 409: 'TRANSICION_NO_PERMITIDA' },
   manejador: async ({ usuario, params, cuerpo }) => {
     await transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION', 'ESPERANDO_PIEZAS'], 'cambiar el estado');
+      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION', 'ESPERANDO_PIEZAS'], 'cambiar el estado', usuario);
       assertTransicion(o.estado, cuerpo.estado, usuario.rol === 'DUENO' ? 'JEFE' : usuario.rol);
       await tx.orden.update({ where: { id: o.id }, data: { estado: cuerpo.estado } });
       const espera = cuerpo.estado === 'ESPERANDO_PIEZAS';
@@ -398,7 +414,7 @@ definir({
         datos: { ...datosVehiculo(o), entrega: o.entregaEstimada ? fechaLarga(o.entregaEstimada, c.zonaHoraria) : null },
       });
     });
-    return detalle(params.id, true);
+    return detalle(params.id, usuario);
   },
 });
 
@@ -416,7 +432,7 @@ definir({
   errores: { 404: 'La orden no existe', 409: 'No está en reparación', 422: 'NO_COMPLETABLE (el mensaje explica qué falta) o KM_MENOR' },
   manejador: async ({ usuario, params, cuerpo }) => {
     await transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION'], 'completar');
+      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION'], 'completar', usuario);
       const partidas = await tx.partida.findMany({ where: { solicitud: { ordenId: o.id } } });
       const motivo = motivoNoCompletable(partidas);
       if (motivo) throw reglaNegocio('NO_COMPLETABLE', motivo);
@@ -430,8 +446,9 @@ definir({
       });
       await tx.vehiculo.update({ where: { id: o.vehiculoId }, data: { kilometros: cuerpo.kmSalida } });
       await registrarEvento(tx, o.id, 'ESTADO_CAMBIADO', usuario.id, { de: o.estado, a: 'COMPLETADA', texto: 'Listo para recoger', kmSalida: cuerpo.kmSalida });
-      // En la misma transacción que el cierre: o se completa y se avisa con la factura, o no pasa nada.
-      const f = await calcularFactura(o.id, tx);
+      // En la misma transacción que el cierre: la factura recibe su número y queda congelada, y se avisa con ella.
+      // O pasa todo, o nada (tampoco se gasta el número).
+      const f = await emitirFactura(tx, o.id, ahora);
       await avisar(tx, o.cita.cliente.usuarioId, {
         tipo: 'ORDEN_COMPLETADA',
         mensaje: `${numeroOrden(o.numero)}: tu vehículo está listo. Total ${euros(f.total)}`,
@@ -439,6 +456,7 @@ definir({
         adjuntoFacturaOrdenId: o.id,
         datos: {
           ...datosVehiculo(o),
+          factura: f.codigo,
           lineas: f.lineas.map((l) => ({ concepto: l.concepto, importe: euros(l.importeCentimos) })),
           base: euros(f.base),
           iva: euros(f.iva),
@@ -447,7 +465,7 @@ definir({
         },
       });
     });
-    return detalle(params.id, true);
+    return detalle(params.id, usuario);
   },
 });
 
@@ -465,7 +483,7 @@ definir({
   errores: { 404: 'La orden no existe', 409: 'No está completada ni rechazada (o ya se entregó)', 422: 'KM_SALIDA_REQUERIDOS o KM_MENOR' },
   manejador: async ({ usuario, params, cuerpo }) => {
     await transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['COMPLETADA', 'RECHAZADA'], 'entregar');
+      const o = await bloquearOrden(tx, params.id, ['COMPLETADA', 'RECHAZADA'], 'entregar', usuario);
       const km = cuerpo.kmSalida ?? o.kmSalida;
       if (km === null) throw reglaNegocio('KM_SALIDA_REQUERIDOS', 'Indica los kilómetros a la salida');
       comprobarKmSalida(o.kmEntrada, km);
@@ -485,7 +503,7 @@ definir({
         datos: { ...datosVehiculo(o), fecha: `${fechaLarga(ahora, c.zonaHoraria)}, ${hora(ahora, c.zonaHoraria)}` },
       });
     });
-    return detalle(params.id, true);
+    return detalle(params.id, usuario);
   },
 });
 
@@ -500,9 +518,9 @@ definir({
   manejador: async ({ usuario, params, res }) => {
     const o = await ordenAccesible(usuario, params.id);
     if (o.estado !== 'COMPLETADA' && o.estado !== 'ENTREGADA') throw conflicto('SIN_FACTURA', 'La factura estará disponible al completar la reparación');
-    const pdf = await facturaPdf(o.id);
+    const { pdf, nombre } = await facturaPdf(o.id);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="Factura-${numeroOrden(o.numero)}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${nombre}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(pdf);
   },
@@ -523,7 +541,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA', 'RECHAZADA'], 'añadir observaciones');
+      const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'ESPERANDO_AUTORIZACION', 'EN_REPARACION', 'ESPERANDO_PIEZAS', 'COMPLETADA', 'RECHAZADA'], 'añadir observaciones', usuario);
       const obs = await tx.observacion.create({ data: { ordenId: o.id, empleadoId: emp.id, texto: cuerpo.texto, interna: cuerpo.interna, fecha: reloj.ahora() } });
       await registrarEvento(tx, o.id, 'OBSERVACION', usuario.id, { texto: cuerpo.texto }, !cuerpo.interna);
       return { id: obs.id };
@@ -547,7 +565,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION', 'ESPERANDO_PIEZAS'], 'registrar trabajo');
+      const o = await bloquearOrden(tx, params.id, ['EN_REPARACION', 'ESPERANDO_PIEZAS'], 'registrar trabajo', usuario);
       const p = await tx.partida.findFirst({ where: { id: cuerpo.partidaId, solicitud: { ordenId: o.id } } });
       if (!p) throw noEncontrado('El trabajo');
       if (p.estado !== 'ACEPTADA') throw reglaNegocio('TRABAJO_NO_ACEPTADO', 'Ese trabajo no está aceptado por el cliente');

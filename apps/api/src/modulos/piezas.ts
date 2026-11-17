@@ -14,7 +14,8 @@ import { obtenerConfig } from '../servicios/config';
 import { inicioDia, sumarDias } from '../lib/fechas';
 import { moverStock } from '../servicios/stock';
 import { dejarConstancia } from '../servicios/constancias';
-import { Centimos, Dia, Id, Instante, ParamId, TextoCorto, lista } from './esquemas';
+import { Centimos, Dia, Id, Instante, ParamId, TextoCorto } from './esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 
 const Categoria = z.enum(['FRENOS', 'MOTOR', 'FILTROS', 'ACEITES', 'ENCENDIDO', 'ELECTRICIDAD', 'SUSPENSION', 'TRANSMISION', 'CARROCERIA', 'NEUMATICOS', 'OTRAS']);
 
@@ -46,14 +47,32 @@ definir({
   resumen: 'Catálogo de piezas',
   descripcion: 'Busca por referencia o nombre y filtra por categoría. `stockBajo=true`: solo las que están en su stock mínimo o por debajo.',
   acceso: PERSONAL,
-  query: z.object({ q: z.string().max(60).optional(), categoria: Categoria.optional(), stockBajo: z.enum(['true', 'false']).optional(), inactivas: z.enum(['true', 'false']).optional() }),
-  respuesta: lista(PiezaSchema),
+  query: z.object({
+    q: z.string().max(60).optional(),
+    categoria: Categoria.optional(),
+    stockBajo: z.enum(['true', 'false']).optional(),
+    inactivas: z.enum(['true', 'false']).optional(),
+    ...consultaPaginada(['nombre', 'referencia', 'categoria', 'stock', 'precio']),
+  }),
+  respuesta: listaPaginada(PiezaSchema),
   manejador: async ({ query }) => {
     const where: Prisma.PiezaWhereInput = query.inactivas === 'true' ? {} : { activa: true };
     if (query.q) where.OR = [{ referencia: { contains: query.q.trim(), mode: 'insensitive' } }, { nombre: { contains: query.q.trim(), mode: 'insensitive' } }];
     if (query.categoria) where.categoria = query.categoria;
     if (query.stockBajo === 'true') where.stock = { lte: prisma.pieza.fields.stockMinimo };
-    return { datos: (await prisma.pieza.findMany({ where, orderBy: { nombre: 'asc' }, take: 300 })).map(aPieza) };
+    const orderBy: Prisma.PiezaOrderByWithRelationInput[] = ordenar(
+      query,
+      {
+        nombre: (dir) => ({ nombre: dir }),
+        referencia: (dir) => ({ referencia: dir }),
+        categoria: (dir) => ({ categoria: dir }),
+        stock: (dir) => ({ stock: dir }),
+        precio: (dir) => ({ precioCentimos: dir }),
+      },
+      { orden: 'nombre', dir: 'asc' },
+    );
+    const [total, piezas] = await Promise.all([prisma.pieza.count({ where }), prisma.pieza.findMany({ where, orderBy, ...saltoYTope(query) })]);
+    return pagina(piezas.map(aPieza), total, query);
   },
 });
 
@@ -133,7 +152,7 @@ definir({
 const MovimientoSchema = z
   .object({
     id: Id,
-    tipo: z.enum(['ALTA', 'AJUSTE', 'CUADRE', 'USO', 'RECEPCION']),
+    tipo: z.enum(['ALTA', 'AJUSTE', 'CUADRE', 'USO', 'RECEPCION', 'ANULACION']),
     delta: z.number().int(),
     stockAntes: z.number().int(),
     stockDespues: z.number().int(),
@@ -152,18 +171,25 @@ definir({
   descripcion: 'Todos los cambios de stock, del más reciente al más antiguo: altas, ajustes, cuadres, usos en reparaciones y recepciones. La suma de `delta` es el stock actual.',
   acceso: GESTION,
   params: ParamId,
-  respuesta: lista(MovimientoSchema),
+  query: z.object(consultaPaginada(['fecha'])),
+  respuesta: listaPaginada(MovimientoSchema),
   errores: { 404: 'La pieza no existe' },
-  manejador: async ({ params }) => {
+  manejador: async ({ params, query }) => {
     if (!(await prisma.pieza.findUnique({ where: { id: params.id } }))) throw noEncontrado('La pieza');
-    const m = await prisma.movimientoStock.findMany({ where: { piezaId: params.id }, orderBy: [{ fecha: 'desc' }, { id: 'desc' }], take: 500 });
+    const where = { piezaId: params.id };
+    const orderBy: Prisma.MovimientoStockOrderByWithRelationInput[] = ordenar(query, { fecha: (dir) => ({ fecha: dir }) }, { orden: 'fecha', dir: 'desc' });
+    const [total, m] = await Promise.all([prisma.movimientoStock.count({ where }), prisma.movimientoStock.findMany({ where, orderBy, ...saltoYTope(query) })]);
     const [usuarios, ordenes] = await Promise.all([
       prisma.usuario.findMany({ where: { id: { in: [...new Set(m.map((x) => x.usuarioId))] } } }),
       prisma.orden.findMany({ where: { id: { in: m.flatMap((x) => (x.ordenId ? [x.ordenId] : [])) } } }),
     ]);
     const nombre = new Map(usuarios.map((u) => [u.id, u.nombre]));
     const codigo = new Map(ordenes.map((o) => [o.id, numeroOrden(o.numero)]));
-    return { datos: m.map((x) => ({ id: x.id, tipo: x.tipo, delta: x.delta, stockAntes: x.stockAntes, stockDespues: x.stockDespues, motivo: x.motivo, usuario: nombre.get(x.usuarioId) ?? '—', ordenCodigo: x.ordenId ? codigo.get(x.ordenId) ?? null : null, fecha: x.fecha })) };
+    return pagina(
+      m.map((x) => ({ id: x.id, tipo: x.tipo, delta: x.delta, stockAntes: x.stockAntes, stockDespues: x.stockDespues, motivo: x.motivo, usuario: nombre.get(x.usuarioId) ?? '—', ordenCodigo: x.ordenId ? codigo.get(x.ordenId) ?? null : null, fecha: x.fecha })),
+      total,
+      query,
+    );
   },
 });
 
@@ -174,25 +200,24 @@ definir({
   resumen: 'Movimientos de stock de un día (todas las piezas)',
   descripcion: 'Para el panel «Movimientos de hoy» del catálogo.',
   acceso: GESTION,
-  query: z.object({ fecha: Dia }),
-  respuesta: lista(MovimientoSchema.extend({ piezaId: Id, pieza: z.string(), referencia: z.string() })),
+  query: z.object({ fecha: Dia, ...consultaPaginada(['fecha', 'pieza']) }),
+  respuesta: listaPaginada(MovimientoSchema.extend({ piezaId: Id, pieza: z.string(), referencia: z.string() })),
   manejador: async ({ query }) => {
     const c = await obtenerConfig(prisma);
-    const m = await prisma.movimientoStock.findMany({
-      where: { fecha: { gte: inicioDia(query.fecha, c.zonaHoraria), lt: inicioDia(sumarDias(query.fecha, 1), c.zonaHoraria) } },
-      include: { pieza: true },
-      orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
-      take: 200,
-    });
+    const where = { fecha: { gte: inicioDia(query.fecha, c.zonaHoraria), lt: inicioDia(sumarDias(query.fecha, 1), c.zonaHoraria) } };
+    const orderBy: Prisma.MovimientoStockOrderByWithRelationInput[] = ordenar(query, { fecha: (dir) => ({ fecha: dir }), pieza: (dir) => ({ pieza: { nombre: dir } }) }, { orden: 'fecha', dir: 'desc' });
+    const [total, m] = await Promise.all([prisma.movimientoStock.count({ where }), prisma.movimientoStock.findMany({ where, include: { pieza: true }, orderBy, ...saltoYTope(query) })]);
     const nombres = new Map((await prisma.usuario.findMany({ where: { id: { in: [...new Set(m.map((x) => x.usuarioId))] } } })).map((u) => [u.id, u.nombre]));
     const ordenes = new Map((await prisma.orden.findMany({ where: { id: { in: m.flatMap((x) => (x.ordenId ? [x.ordenId] : [])) } } })).map((o) => [o.id, numeroOrden(o.numero)]));
-    return {
-      datos: m.map((x) => ({
+    return pagina(
+      m.map((x) => ({
         id: x.id, tipo: x.tipo, delta: x.delta, stockAntes: x.stockAntes, stockDespues: x.stockDespues, motivo: x.motivo,
         usuario: nombres.get(x.usuarioId) ?? '—', ordenCodigo: x.ordenId ? ordenes.get(x.ordenId) ?? null : null, fecha: x.fecha,
         piezaId: x.piezaId, pieza: x.pieza.nombre, referencia: x.pieza.referencia,
       })),
-    };
+      total,
+      query,
+    );
   },
 });
 
@@ -237,7 +262,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'usar piezas');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'usar piezas', usuario);
       const pieza = await tx.pieza.findUnique({ where: { id: cuerpo.piezaId } });
       if (!pieza || !pieza.activa) throw noEncontrado('La pieza');
       // Con la fila bloqueada: si otro la cogió antes, aquí ya se ve el stock real.
@@ -246,6 +271,36 @@ definir({
       await registrarEvento(tx, orden.id, 'PIEZA_USADA', usuario.id, { pieza: pieza.nombre, referencia: pieza.referencia, cantidad: cuerpo.cantidad, trabajo: partida.descripcion });
       const restante = (await tx.pieza.findUniqueOrThrow({ where: { id: pieza.id } })).stock;
       return { id: uso.id, stockRestante: restante };
+    });
+  },
+});
+
+definir({
+  metodo: 'post',
+  ruta: '/piezas-usadas/:id/anular',
+  etiqueta: 'Trabajos',
+  resumen: 'Deshacer una pieza usada por error',
+  descripcion:
+    'Devuelve las unidades al almacén (movimiento ANULACION con el motivo) y quita la pieza del trabajo, de la factura y de la trazabilidad. Queda en la línea de tiempo de la orden, a la vista del cliente, y una copia en las constancias. Solo mientras la orden esté en reparación o esperando piezas: una factura ya emitida no cambia.',
+  acceso: PERSONAL,
+  params: ParamId,
+  cuerpo: z.object({ motivo: TextoCorto }).strict(),
+  respuesta: z.object({ stockRestante: z.number().int() }),
+  errores: { 403: 'ORDEN_DE_OTRO_PUESTO', 404: 'El uso de la pieza no existe', 409: 'La orden ya no está en reparación, o ya se deshizo' },
+  manejador: async ({ usuario, params, cuerpo }) => {
+    const uso = await prisma.piezaUsada.findUnique({ where: { id: params.id } });
+    if (!uso) throw noEncontrado('El uso de la pieza');
+    return transaccion(async (tx) => {
+      const { partida, orden } = await partidaParaTrabajar(tx, uso.partidaId, 'deshacer piezas usadas', usuario, { permitirTerminada: true });
+      // Con la orden bloqueada: si otra petición lo deshizo antes, ya no está.
+      const actual = await tx.piezaUsada.findUnique({ where: { id: uso.id }, include: { pieza: true } });
+      if (!actual) throw conflicto('YA_ANULADA', 'Esa pieza ya se quitó del trabajo');
+      const { pieza, ...copia } = actual;
+      const restante = await moverStock(tx, actual.piezaId, { delta: actual.cantidad }, { tipo: 'ANULACION', usuarioId: usuario.id, ordenId: orden.id, motivo: cuerpo.motivo });
+      await dejarConstancia(tx, 'PiezaUsada', { ...copia, pieza: pieza.nombre, referencia: pieza.referencia, orden: numeroOrden(orden.numero) }, 'BORRADO', usuario.id, cuerpo.motivo);
+      await tx.piezaUsada.delete({ where: { id: actual.id } });
+      await registrarEvento(tx, orden.id, 'PIEZA_ANULADA', usuario.id, { pieza: pieza.nombre, referencia: pieza.referencia, cantidad: actual.cantidad, trabajo: partida.descripcion, motivo: cuerpo.motivo });
+      return { stockRestante: restante };
     });
   },
 });
@@ -266,7 +321,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     return transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'registrar piezas retiradas', { permitirTerminada: true });
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'registrar piezas retiradas', usuario, { permitirTerminada: true });
       const q = await tx.piezaQuitada.create({ data: { partidaId: partida.id, ...cuerpo, empleadoId: emp.id, fecha: reloj.ahora() } });
       await registrarEvento(tx, orden.id, 'PIEZA_QUITADA', usuario.id, { ...cuerpo, trabajo: partida.descripcion });
       return { id: q.id };
@@ -286,7 +341,7 @@ definir({
   errores: { 404: 'El trabajo no existe', 409: 'Ya terminado u orden fuera de reparación', 422: 'TRABAJO_NO_ACEPTADO' },
   manejador: async ({ usuario, params }) =>
     transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'terminar trabajos');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'terminar trabajos', usuario);
       const ahora = reloj.ahora();
       await tx.partida.update({ where: { id: partida.id }, data: { terminadaEn: ahora } });
       await registrarEvento(tx, orden.id, 'TRABAJO_REGISTRADO', usuario.id, { trabajo: partida.descripcion, terminado: true });
@@ -351,7 +406,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     const emp = await empleadoDe(usuario);
     const id = await transaccion(async (tx) => {
-      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'pedir piezas');
+      const { partida, orden } = await partidaParaTrabajar(tx, params.id, 'pedir piezas', usuario);
       if (cuerpo.piezaId && !(await tx.pieza.findUnique({ where: { id: cuerpo.piezaId } }))) throw noEncontrado('La pieza');
       const p = await tx.pedidoPieza.create({ data: { partidaId: partida.id, piezaId: cuerpo.piezaId, descripcionLibre: cuerpo.descripcionLibre, cantidad: cuerpo.cantidad, creadoPorId: emp.id }, include: incluirPedido });
       await registrarEvento(tx, orden.id, 'PEDIDO_ACTUALIZADO', usuario.id, { pedidoId: p.id, estado: 'PENDIENTE', pieza: nombrePieza(p) }, false);
@@ -374,12 +429,18 @@ definir({
   resumen: 'Pedidos de piezas',
   descripcion: 'El jefe ve todos; el mecánico, los suyos.',
   acceso: PERSONAL,
-  query: z.object({ estado: EstadoPedido.optional() }),
-  respuesta: lista(PedidoSchema),
+  query: z.object({ estado: EstadoPedido.optional(), ...consultaPaginada(['creadoEn', 'actualizadoEn', 'estado']) }),
+  respuesta: listaPaginada(PedidoSchema),
   manejador: async ({ usuario, query }) => {
     const where: Prisma.PedidoPiezaWhereInput = query.estado ? { estado: query.estado } : {};
     if (!esGestion(usuario)) where.creadoPorId = (await empleadoDe(usuario)).id;
-    return { datos: (await prisma.pedidoPieza.findMany({ where, include: incluirPedido, orderBy: { creadoEn: 'desc' }, take: 300 })).map(aPedido) };
+    const orderBy: Prisma.PedidoPiezaOrderByWithRelationInput[] = ordenar(
+      query,
+      { creadoEn: (dir) => ({ creadoEn: dir }), actualizadoEn: (dir) => ({ actualizadoEn: dir }), estado: (dir) => ({ estado: dir }) },
+      { orden: 'creadoEn', dir: 'desc' },
+    );
+    const [total, pedidos] = await Promise.all([prisma.pedidoPieza.count({ where }), prisma.pedidoPieza.findMany({ where, include: incluirPedido, orderBy, ...saltoYTope(query) })]);
+    return pagina(pedidos.map(aPedido), total, query);
   },
 });
 

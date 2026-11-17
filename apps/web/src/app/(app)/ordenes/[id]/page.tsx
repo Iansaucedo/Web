@@ -109,7 +109,7 @@ export default function DetalleOrden({ params }: { params: Promise<{ id: string 
                     <Card>
                       <CardContent>
                         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="h6">Factura</Typography>
+                          <Typography variant="h6">Factura{o.factura.codigo ? ` ${o.factura.codigo}` : ''}</Typography>
                           <Button startIcon={<PdfIcon />} href={`/api/ordenes/${o.id}/factura.pdf`} target="_blank">Descargar PDF</Button>
                         </Stack>
                         {o.factura.lineas.map((l, i) => (

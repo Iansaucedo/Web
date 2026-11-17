@@ -22,7 +22,7 @@ const DIAS = 21;
 
 export default function Reservar() {
   const router = useRouter();
-  const vehiculos = useDatos<Lista<Vehiculo>>('/vehiculos');
+  const vehiculos = useDatos<Lista<Vehiculo>>('/vehiculos?porPagina=100');
   const desde = hoy();
   const disp = useDatos<{ dias: DiaDisponible[] }>(`/disponibilidad?desde=${desde}&hasta=${sumarDias(desde, DIAS - 1)}`);
   const [vehiculoId, setVehiculoId] = useState('');

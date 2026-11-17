@@ -15,14 +15,16 @@ import SiguienteIcon from '@mui/icons-material/ChevronRight';
 import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useDatos, useListado } from '../../../../lib/hooks';
+import { Paginacion } from '../../../../components/Paginacion';
 import { ESTADO_CITA, diaLargo, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { Cita, DiaDisponible, Lista, Puesto } from '../../../../lib/tipos';
 
 function Citas() {
   const params = useSearchParams();
   const [fecha, setFecha] = useState(params.get('fecha') ?? hoy());
-  const citas = useDatos<Lista<Cita>>(`/citas?fecha=${fecha}`);
+  // Las citas de un día caben de sobra en 100 (la capacidad está limitada por los puestos); aun así, se pagina.
+  const citas = useListado<Cita>('/citas', { fecha }, { porPagina: 100, orden: 'inicio', dir: 'asc', enUrl: false });
   const disp = useDatos<{ dias: DiaDisponible[] }>(`/disponibilidad?desde=${fecha}&hasta=${fecha}`);
   const puestos = useDatos<Lista<Puesto>>('/puestos');
   const recibir = useDialogo<Cita>();
@@ -87,6 +89,7 @@ function Citas() {
           )
         }
       </Carga>
+      {(citas.datos?.paginas ?? 1) > 1 && <Paginacion listado={citas} nombre={['cita', 'citas']} />}
 
       <Confirmar
         abierto={recibir.abierto}

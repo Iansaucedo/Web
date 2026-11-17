@@ -24,7 +24,8 @@ import { Cabecera, Carga, Confirmar, useDialogo } from '../../../../components/C
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { useSesion } from '../../../../components/Sesion';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useDatos, useListado } from '../../../../lib/hooks';
+import { Paginacion } from '../../../../components/Paginacion';
 import { dia, diaLargo, hoy, sumarDias, cuantos } from '../../../../lib/formato';
 import type { DiaDisponible, Lista, Mecanico, Puesto, TipoAusencia } from '../../../../lib/tipos';
 
@@ -59,7 +60,7 @@ export default function Personal() {
   const asignaciones = useDatos<Lista<Asignacion>>(`/asignaciones?fecha=${fecha}`);
   const ausencias = useDatos<Lista<Ausencia>>(`/ausencias?desde=${hoy()}&hasta=${sumarDias(hoy(), 30)}`);
   const disp = useDatos<{ dias: DiaDisponible[] }>(`/disponibilidad?desde=${fecha}&hasta=${fecha}`);
-  const invitaciones = useDatos<Lista<Invitacion>>('/invitaciones');
+  const invitaciones = useListado<Invitacion>('/invitaciones', {}, { prefijo: 'i', porPagina: 10, orden: 'creadaEn', dir: 'desc' });
   const ausencia = useDialogo<Mecanico>();
   const invitar = useDialogo();
   const nuevoPuesto = useDialogo();
@@ -196,6 +197,7 @@ export default function Personal() {
                   </TableContainer>
                 )}
               </Carga>
+              <Paginacion listado={invitaciones} nombre={['alta', 'altas']} />
             </CardContent>
           </Card>
         </Grid>

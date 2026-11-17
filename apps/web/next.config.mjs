@@ -18,6 +18,8 @@ const CSP = [
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
+  // ESLint se ejecuta en la CI para todo el monorepo (eslint.config.mjs de la raíz), no al compilar.
+  eslint: { ignoreDuringBuilds: true },
   // El navegador solo habla con este dominio; /api/* se reenvía a Express.
   // Así la cookie de sesión es first-party también en *.azurewebsites.net.
   async rewrites() {

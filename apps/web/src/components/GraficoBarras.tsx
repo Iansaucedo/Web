@@ -53,8 +53,10 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
         // Todo a cero: un eje vacío con marcas inventadas no dice nada.
         <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>Sin datos en este periodo.</Typography>
       ) : (
-        <Box sx={{ position: 'relative', overflowX: 'auto' }}>
-          <svg viewBox={`0 0 ${ancho} ${alto}`} width="100%" role="img" aria-label={`${titulo}. Usa la vista de tabla para leer los valores.`} style={{ minWidth: 640, display: 'block' }}>
+        <Box sx={{ overflowX: 'auto' }}>
+         {/* Firefox no deduce la altura de un <svg> con viewBox dentro de un contenedor con scroll: se fija la proporción. */}
+         <Box sx={{ position: 'relative', minWidth: 640 }}>
+          <svg viewBox={`0 0 ${ancho} ${alto}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${titulo}. Usa la vista de tabla para leer los valores.`} style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: `${ancho} / ${alto}` }}>
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={izq} x2={ancho} y1={y(t)} y2={y(t)} stroke={REJILLA} strokeWidth={1} />
@@ -90,6 +92,7 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
               <Typography variant="body2" sx={{ fontWeight: 500 }}>{formato(datos[activo].y)}</Typography>
             </Box>
           )}
+         </Box>
         </Box>
       )}
     </Box>

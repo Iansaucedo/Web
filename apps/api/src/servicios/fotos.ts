@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import type { Prisma, Usuario } from '@prisma/client';
 import { prisma } from '../db';
 import { reloj } from '../lib/reloj';
@@ -10,6 +11,12 @@ export type TipoFoto = (typeof TIPOS_FOTO)[number];
 export const MAX_BYTES_FOTO = 5 * 1024 * 1024;
 export const MAX_FOTOS_POR_TRABAJO = 6;
 const HORAS_HUERFANA = 24;
+/** Fotos subidas y aún sin adjuntar que puede tener cada persona a la vez. */
+export const MAX_FOTOS_SUELTAS = 20;
+/** Lado mayor de la foto guardada: de sobra para ver un daño y evita guardar fotos de 50 MP. */
+export const LADO_MAXIMO_FOTO = 2560;
+/** Una imagen de 5 MB puede declarar dimensiones enormes («bomba de descompresión»): se rechaza antes de decodificarla. */
+const PIXELES_MAXIMOS = 50_000_000;
 
 /** Formato real según los primeros bytes. No se confía en el nombre ni en la cabecera del navegador. */
 export function formatoReal(b: Buffer): TipoFoto | null {
@@ -17,6 +24,24 @@ export function formatoReal(b: Buffer): TipoFoto | null {
   if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
   if (b.length >= 12 && b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
   return null;
+}
+
+/**
+ * Sanea la foto: la decodifica y la vuelve a codificar en su mismo formato. Así se descartan los metadatos
+ * (EXIF con la ubicación GPS y el modelo del móvil, XMP, comentarios) y cualquier dato extra pegado al archivo,
+ * se aplica la orientación del EXIF a los píxeles (la foto no sale girada) y se limita su tamaño.
+ * Si no se puede decodificar, no es una imagen válida.
+ */
+export async function sanearFoto(datos: Buffer, tipo: TipoFoto): Promise<Buffer> {
+  try {
+    const img = sharp(datos, { failOn: 'error', limitInputPixels: PIXELES_MAXIMOS, animated: false })
+      .rotate()
+      .resize({ width: LADO_MAXIMO_FOTO, height: LADO_MAXIMO_FOTO, fit: 'inside', withoutEnlargement: true });
+    const salida = tipo === 'image/png' ? img.png({ compressionLevel: 9 }) : tipo === 'image/webp' ? img.webp({ quality: 85 }) : img.jpeg({ quality: 85, mozjpeg: true });
+    return await salida.toBuffer();
+  } catch {
+    throw reglaNegocio('FOTO_NO_VALIDA', 'El archivo no es una foto JPEG, PNG o WebP válida');
+  }
 }
 
 export const urlFoto = (f: { id: string; url: string | null }) => f.url ?? `/api/fotos/${f.id}`;

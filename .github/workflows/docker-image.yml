@@ -1,14 +1,23 @@
 name: Docker Image CI
 
 on:
-  push:
-    branches:
-      - main
+  # Solo cuando la CI ha pasado en main (tipos, lint, tests de la API y E2E). Así no se despliega código roto.
+  workflow_run:
+    workflows: ['CI (tipos, lint y tests)']
+    types: [completed]
+    branches: [main]
+  # A mano: primero se ejecuta la CI (job `tests`).
   workflow_dispatch:
 
 jobs:
+  tests:
+    name: CI antes de desplegar (ejecución manual)
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'Iansaucedo/Web'
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
-    if: github.repository == 'Iansaucedo/Web'
+    needs: tests
+    if: always() && github.repository == 'Iansaucedo/Web' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || needs.tests.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,6 +25,8 @@ jobs:
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Iniciar sesión en GitHub Container Registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -24,9 +35,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Obtener usuario en minúsculas
+      - name: Obtener usuario en minúsculas y commit
         id: repo
-        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "SHA=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Compilar y subir imagen unificada (Web + API)
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
@@ -36,4 +51,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.repo.outputs.OWNER }}/web:latest
-            ghcr.io/${{ steps.repo.outputs.OWNER }}/web:${{ github.sha }}
+            ghcr.io/${{ steps.repo.outputs.OWNER }}/web:${{ steps.repo.outputs.SHA }}

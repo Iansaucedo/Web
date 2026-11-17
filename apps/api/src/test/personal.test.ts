@@ -132,6 +132,21 @@ describe('invitaciones y usuarios', () => {
     expect((await dueno.get('/api/usuarios?rol=CLIENTE')).body.datos).toHaveLength(1);
   });
 
+  it('QA: dar de baja desde Usuarios cancela sus citas y reservas, cierra su sesión y lo quita de los puestos', async () => {
+    const [mec] = await tallerAbierto(1);
+    const dueno = await entrar('dueno@taller.test', 'DUENO');
+    const ana = await clienteConCoche();
+    const cita = (await reservar(ana, MANANA, '10:00')).body;
+    const puesto = await prisma.puesto.findFirstOrThrow();
+    await dueno.put('/api/asignaciones').send({ fecha: MANANA, puestoId: puesto.id, empleadoId: mec.empleadoId });
+    expect((await dueno.patch(`/api/usuarios/${ana.usuarioId}`).send({ activo: false })).status).toBe(200);
+    expect((await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } })).estado).toBe('CANCELADA');
+    expect((await ana.get('/api/auth/me')).status).toBe(401);
+    // Pasar a jefe al mecánico lo quita de los puestos que tenía asignados.
+    expect((await dueno.patch(`/api/usuarios/${mec.usuarioId}`).send({ rol: 'JEFE' })).status).toBe(200);
+    expect(await prisma.asignacionPuesto.count()).toBe(0);
+  });
+
   it('QA: un cliente con vehículos no puede pasar a mecánico', async () => {
     const dueno = await entrar('dueno@taller.test', 'DUENO');
     const ana = await clienteConCoche();

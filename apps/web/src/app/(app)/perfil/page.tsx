@@ -27,7 +27,7 @@ export default function Perfil() {
   const [nif, setNif] = useState(c?.nif ?? '');
   const { ejecutar, ocupado, error } = useAccion();
   const nuevo = !c;
-  const enTaller = useDatos<Lista<OrdenResumen>>(usuario.rol === 'CLIENTE' && c ? '/ordenes?abiertas=true' : null);
+  const enTaller = useDatos<Lista<OrdenResumen>>(usuario.rol === 'CLIENTE' && c ? '/ordenes?abiertas=true&porPagina=10' : null);
   const [baja, setBaja] = useState(false);
   const [confirmacion, setConfirmacion] = useState('');
   const [motivo, setMotivo] = useState('');

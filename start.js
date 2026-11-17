@@ -35,7 +35,9 @@ async function esperarApi() {
     try {
       const respuesta = await fetch('http://127.0.0.1:4000/api/health');
       if (respuesta.ok) return;
-    } catch {}
+    } catch {
+      // La API aún no escucha: se vuelve a intentar.
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error('La API no estuvo lista en 60 segundos');

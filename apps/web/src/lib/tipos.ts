@@ -104,10 +104,12 @@ export interface OrdenDetalle extends OrdenResumen {
   descripcionProblema: string;
   solicitudes: Solicitud[];
   presupuesto: Importe;
-  factura: (Importe & { lineas: { concepto: string; cantidad: number; precioUnitarioCentimos: number; importeCentimos: number }[] }) | null;
+  factura: (Importe & { codigo: string | null; lineas: { concepto: string; cantidad: number; precioUnitarioCentimos: number; importeCentimos: number }[] }) | null;
   observaciones: { id: string; texto: string; interna: boolean; autor: string; fecha: string }[];
   eventos: { id: string; tipo: string; payload: Record<string, unknown>; actor: string; fecha: string }[];
   motivoNoCompletable: string | null;
+  /** Quien la ve puede cambiarla (un mecánico, solo si está en un puesto suyo hoy). */
+  puedoModificar: boolean;
 }
 
 export interface Pieza {
@@ -231,9 +233,17 @@ export interface Lista<T> {
   datos: T[];
 }
 
+/** Respuesta de un listado paginado de la API. */
+export interface Paginada<T> extends Lista<T> {
+  total: number;
+  pagina: number;
+  porPagina: number;
+  paginas: number;
+}
+
 export interface MovimientoStock {
   id: string;
-  tipo: 'ALTA' | 'AJUSTE' | 'CUADRE' | 'USO' | 'RECEPCION';
+  tipo: 'ALTA' | 'AJUSTE' | 'CUADRE' | 'USO' | 'RECEPCION' | 'ANULACION';
   delta: number;
   stockAntes: number;
   stockDespues: number;

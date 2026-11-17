@@ -13,16 +13,19 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import { Cabecera, Carga } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
-import { useDatos } from '../../../../lib/hooks';
+import { useListado } from '../../../../lib/hooks';
+import { CeldaOrden, Paginacion } from '../../../../components/Paginacion';
 import { ESTADO_ORDEN, fechaHora } from '../../../../lib/formato';
-import type { Lista, OrdenResumen } from '../../../../lib/tipos';
+import type { OrdenResumen } from '../../../../lib/tipos';
 
 export default function Ordenes() {
   const [estado, setEstado] = useState('abiertas');
   const [q, setQ] = useState('');
-  const params = new URLSearchParams(estado === 'abiertas' ? { abiertas: 'true' } : estado ? { estado } : {});
-  if (q.trim()) params.set('q', q.trim());
-  const ordenes = useDatos<Lista<OrdenResumen>>(`/ordenes?${params}`);
+  const ordenes = useListado<OrdenResumen>(
+    '/ordenes',
+    { abiertas: estado === 'abiertas' && 'true', estado: estado !== 'abiertas' && estado, q: q.trim() },
+    { orden: 'abiertaEn', dir: 'desc' },
+  );
   return (
     <>
       <Cabecera titulo="Órdenes" />
@@ -40,7 +43,14 @@ export default function Ordenes() {
             <TableContainer>
               <Table>
                 <TableHead>
-                  <TableRow><TableCell>Orden</TableCell><TableCell>Vehículo</TableCell><TableCell>Cliente</TableCell><TableCell>Puesto</TableCell><TableCell>Entrada</TableCell><TableCell>Estado</TableCell></TableRow>
+                  <TableRow>
+                    <CeldaOrden listado={ordenes} campo="numero" dirInicial="desc">Orden</CeldaOrden>
+                    <CeldaOrden listado={ordenes} campo="matricula">Vehículo</CeldaOrden>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Puesto</TableCell>
+                    <CeldaOrden listado={ordenes} campo="abiertaEn" dirInicial="desc">Entrada</CeldaOrden>
+                    <CeldaOrden listado={ordenes} campo="estado">Estado</CeldaOrden>
+                  </TableRow>
                 </TableHead>
                 <TableBody>
                   {d.datos.map((o) => (
@@ -60,6 +70,7 @@ export default function Ordenes() {
           </Card>
         )}
       </Carga>
+      <Paginacion listado={ordenes} nombre={['orden', 'órdenes']} />
     </>
   );
 }

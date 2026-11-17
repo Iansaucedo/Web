@@ -6,6 +6,9 @@ import { registro, ErrorSchema } from '../openapi/registro';
 import { autenticar, enPlazoDeRecuperacion } from '../middleware/auth';
 import { prohibido, ErrorApp } from './errores';
 import { conIdempotencia } from '../middleware/idempotencia';
+import { sumarUsoDiario, usosDiarios } from '../middleware/limite';
+import { reloj } from './reloj';
+import { diaLocal } from './fechas';
 
 type Metodo = 'get' | 'post' | 'put' | 'patch' | 'delete';
 type Acceso = 'publico' | 'autenticado' | Rol[];
@@ -48,10 +51,32 @@ export interface DefRuta<P extends z.ZodType, Q extends z.ZodType, B extends z.Z
   permiteEnBaja?: boolean;
   /** Acepta la cabecera Idempotency-Key (todas las POST que crean algo). */
   idempotente?: boolean;
+  /**
+   * Límite diario por cliente (las rutas con el mismo `grupo` comparten contador). Solo se aplica cuando llama
+   * un cliente: son acciones que avisan al taller por email y no deben poder repetirse sin fin.
+   */
+  limiteDiario?: { grupo: string; maximo: number };
   manejador: (ctx: Contexto<z.infer<P>, z.infer<Q>, z.infer<B>>) => Promise<unknown>;
 }
 
 const TIPOS_IMAGEN = ['image/jpeg', 'image/png', 'image/webp'];
+/** Día natural del taller para los límites diarios (la zona no cambia en la práctica; evita leer la configuración). */
+const ZONA_LIMITES = 'Europe/Madrid';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function comprobarLimiteDiario(def: DefRuta<any, any, any>, usuario: Usuario | null) {
+  if (!def.limiteDiario || usuario?.rol !== 'CLIENTE') return;
+  const { grupo, maximo } = def.limiteDiario;
+  if (usosDiarios(grupo, usuario.id, diaLocal(reloj.ahora(), ZONA_LIMITES)) >= maximo) {
+    throw new ErrorApp(429, 'LIMITE_DIARIO', `Has llegado al máximo de ${maximo} operaciones de este tipo por hoy. Si necesitas más, llama al taller`);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function contarLimiteDiario(def: DefRuta<any, any, any>, usuario: Usuario | null) {
+  if (!def.limiteDiario || usuario?.rol !== 'CLIENTE') return;
+  sumarUsoDiario(def.limiteDiario.grupo, usuario.id, diaLocal(reloj.ahora(), ZONA_LIMITES));
+}
 const patron = (ruta: string) => new RegExp(`^${ruta.replace(/:[A-Za-z]+/g, '[^/]+')}/?$`);
 
 /** ¿La petición va a una ruta que recibe un archivo binario? (`exigirJson` la deja pasar y la ruta valida el tipo). */
@@ -67,9 +92,9 @@ const definidas: DefRuta<any, any, any>[] = [];
  * la monta en Express y la documenta en OpenAPI. Así no puede existir una ruta sin documentar.
  */
 export function definir<
-  P extends z.ZodType = z.ZodObject<{}>,
-  Q extends z.ZodType = z.ZodObject<{}>,
-  B extends z.ZodType = z.ZodObject<{}>,
+  P extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
+  Q extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
+  B extends z.ZodType = z.ZodObject<Record<never, z.ZodType>>,
 >(def: DefRuta<P, Q, B>): void {
   definidas.push(def);
 }
@@ -111,7 +136,9 @@ function documentar(def: DefRuta<z.ZodType, z.ZodType, z.ZodType>) {
     errores[413] ??= `El archivo pasa de ${def.binario.maxBytes / 1024 / 1024} MB`;
     errores[415] ??= `Solo ${def.binario.tipos.join(', ')}`;
   }
-  errores[429] ??= DESCRIPCION_ERROR[429];
+  errores[429] ??= def.limiteDiario
+    ? `Demasiadas peticiones seguidas, o LIMITE_DIARIO: más de ${def.limiteDiario.maximo} al día (clientes)`
+    : DESCRIPCION_ERROR[429];
   for (const [c, texto] of Object.entries(errores)) {
     respuestas[Number(c)] = { description: texto ?? DESCRIPCION_ERROR[Number(c)], content: { 'application/json': { schema: ErrorSchema } } };
   }
@@ -165,8 +192,8 @@ export function montarRutas(router: Router) {
   documentadas = true;
   for (const def of definidas) {
     const acceso = def.acceso ?? 'autenticado';
-    const previos = def.binario ? [express.raw({ type: [...def.binario.tipos], limit: def.binario.maxBytes })] : [];
-    router[def.metodo](def.ruta, ...previos, async (req: Request, res: Response, next: NextFunction) => {
+    const leerBinario = def.binario ? express.raw({ type: [...def.binario.tipos], limit: def.binario.maxBytes }) : null;
+    router[def.metodo](def.ruta, async (req: Request, res: Response, next: NextFunction) => {
       try {
         if (def.binario && !req.is([...def.binario.tipos])) {
           throw new ErrorApp(415, 'TIPO_NO_SOPORTADO', 'Sube la foto en JPEG, PNG o WebP');
@@ -176,6 +203,9 @@ export function montarRutas(router: Router) {
           throw new ErrorApp(403, 'CUENTA_EN_BAJA', 'Tu cuenta está dada de baja. Recupérala para seguir usándola');
         }
         if (Array.isArray(acceso) && usuario!.rol !== 'DUENO' && !acceso.includes(usuario!.rol)) throw prohibido();
+        // El archivo se lee solo después de saber quién lo envía y si puede: un anónimo no hace cargar 5 MB en memoria.
+        if (leerBinario) await new Promise<void>((ok, ko) => leerBinario(req, res, (e?: unknown) => (e ? ko(e) : ok())));
+        await comprobarLimiteDiario(def, usuario);
         const ctx = {
           req,
           res,
@@ -187,6 +217,8 @@ export function montarRutas(router: Router) {
         };
         const ejecutar = () => def.manejador(ctx);
         const resultado = def.idempotente && usuario ? await conIdempotencia(req, res, usuario.id, def.codigo ?? 200, ejecutar) : await ejecutar();
+        // Solo cuentan las acciones que salen bien: un intento rechazado (franja llena…) no envía avisos.
+        if (!res.getHeader('Idempotent-Replayed')) contarLimiteDiario(def, usuario);
         if (res.headersSent || def.produce) return;
         if (def.codigo === 204) res.status(204).end();
         else res.status(def.codigo ?? 200).json(resultado ?? {});

@@ -5,7 +5,6 @@ import { PLANTILLAS, type NombrePlantilla } from './plantillas';
 import { maquetar } from './maqueta';
 import { TransporteMemoria, transporteSmtp, type Transporte } from './transporte';
 import { facturaPdf } from '../modulos/factura';
-import { numeroOrden } from './formato';
 
 export const MAX_INTENTOS = 6;
 /** Espera tras el intento n (1, 2, 4, 8, 16 minutos…), con un máximo de una hora. */
@@ -47,8 +46,8 @@ export async function procesarCola(transporte: Transporte, lote = 20) {
       const { asunto, html, texto } = renderizarEmail(email.plantilla, email.datos as Record<string, unknown>);
       let adjuntos;
       if (email.adjuntoFacturaOrdenId) {
-        const orden = await prisma.orden.findUniqueOrThrow({ where: { id: email.adjuntoFacturaOrdenId } });
-        adjuntos = [{ nombre: `Factura-${numeroOrden(orden.numero)}.pdf`, contenido: await facturaPdf(orden.id) }];
+        const { pdf, nombre } = await facturaPdf(email.adjuntoFacturaOrdenId);
+        adjuntos = [{ nombre, contenido: pdf }];
       }
       await transporte.enviar({ para: email.para, asunto, html, texto, adjuntos });
       await prisma.emailSaliente.update({ where: { id }, data: { estado: 'ENVIADO', enviadoEn: reloj.ahora(), intentos: { increment: 1 } } });

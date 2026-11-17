@@ -9,6 +9,8 @@ import { documentoOpenApi } from './openapi/registro';
 import { cargarModulos } from './modulos';
 import { limitar } from './middleware/limite';
 import { comprobarSecretoSesion } from './middleware/auth';
+import { soloAccesoDePruebas } from './middleware/pruebas';
+import { log } from './lib/log';
 
 function saltosProxy() {
   const n = Number(process.env.TRUST_PROXY ?? 1);
@@ -35,6 +37,11 @@ export function crearApp() {
   // /auth/me no: se pide en cada carga de página, y todo un taller detrás de una misma IP lo agotaría.
   api.use(['/auth/google', '/auth/test-login'], limitar('acceso', 20));
   api.use(limitar('general', 600));
+  // Modo de pruebas: sus rutas solo responden en local o con la clave PRUEBAS_SECRETO (ver middleware/pruebas.ts).
+  if (process.env.NODE_ENV === 'test') {
+    api.use(['/auth/test-login', '/test'], soloAccesoDePruebas);
+    log('warn', 'MODO DE PRUEBAS: acceso sin Google y rutas /api/test/* activos (solo en local o con PRUEBAS_SECRETO). Nunca con datos reales');
+  }
   api.use(exigirJson);
   montarRutas(api);
 

@@ -15,7 +15,8 @@ import { Cabecera, Carga, Vacio } from '../../../components/Comunes';
 import { ChipEstado } from '../../../components/ChipEstado';
 import { useSesion } from '../../../components/Sesion';
 import { api } from '../../../lib/api';
-import { useAccion, useDatos } from '../../../lib/hooks';
+import { useAccion, useDatos, useListado } from '../../../lib/hooks';
+import { Paginacion } from '../../../components/Paginacion';
 import { dia, diaLargo, hora, hoy, sumarDias, cuantos } from '../../../lib/formato';
 import type { DiaDisponible, Lista, ReservaMultiple, Vehiculo } from '../../../lib/tipos';
 import type { Tono } from '../../../theme';
@@ -31,8 +32,9 @@ const MENSAJE = { aceptar: 'Citas creadas', 'rechazar-oferta': 'Día rechazado. 
 
 export default function Reservas() {
   const { usuario } = useSesion();
-  const vehiculos = useDatos<Lista<Vehiculo>>('/vehiculos');
-  const reservas = useDatos<Lista<ReservaMultiple>>('/reservas-multiples');
+  // Para elegir: hasta 100 vehículos (una flota mayor tendría que buscar; la API no deja pedir más de una vez).
+  const vehiculos = useDatos<Lista<Vehiculo>>('/vehiculos?porPagina=100');
+  const reservas = useListado<ReservaMultiple>('/reservas-multiples', {}, { porPagina: 10, orden: 'creadaEn', dir: 'desc' });
   const desde = sumarDias(hoy(), 1);
   const dias = useDatos<{ dias: DiaDisponible[] }>(`/disponibilidad?desde=${desde}&hasta=${sumarDias(desde, 20)}`);
   const [sel, setSel] = useState<string[]>([]);
@@ -112,6 +114,7 @@ export default function Reservas() {
           )
         }
       </Carga>
+      {Boolean(reservas.datos?.total) && <Paginacion listado={reservas} nombre={['solicitud', 'solicitudes']} ordenes={[{ valor: 'creadaEn', texto: 'Fecha', dir: 'desc' }, { valor: 'estado', texto: 'Estado' }]} />}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { LUNES_7, clienteListo, entrarComo, fijarHora, madrid, reiniciar } from './ayudas';
+import { clienteListo, entrarComo, fijarHora, LUNES_7, madrid, recibirEnPuesto1, reiniciar } from './ayudas';
 
 // Batería de QA: intentar romper la aplicación como lo haría un usuario torpe o malintencionado.
 
@@ -68,8 +68,7 @@ test.describe('Entradas hostiles a la API', () => {
   test('cantidades negativas, cero y decimales en piezas y horas', async ({ page }) => {
     const vehiculoId = await clienteListo(page);
     const cita = await (await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-09', '09:00'), descripcionProblema: 'x' } })).json();
-    await entrarComo(page, 'jefe@taller.test');
-    const orden = await (await page.request.post(`/api/citas/${cita.id}/recibir`, { data: { kmEntrada: 98000 } })).json();
+    const orden = await recibirEnPuesto1(page, cita.id, 98000);
     await entrarComo(page, 'mecanico@taller.test');
     for (const horas of [-1, 1000, 0.33]) {
       const r = await page.request.post(`/api/ordenes/${orden.id}/solicitudes`, { data: { partidas: [{ descripcion: 'Trabajo', horasEstimadas: horas, piezasEstimadasCentimos: 0 }] } });
@@ -147,8 +146,7 @@ test.describe('Dobles clics y carreras', () => {
   test('responder dos veces el mismo presupuesto desde dos pestañas: la segunda recibe un error claro', async ({ page, context }) => {
     const vehiculoId = await clienteListo(page);
     const cita = await (await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-09', '09:00'), descripcionProblema: 'x' } })).json();
-    await entrarComo(page, 'jefe@taller.test');
-    const orden = await (await page.request.post(`/api/citas/${cita.id}/recibir`, { data: { kmEntrada: 98000 } })).json();
+    const orden = await recibirEnPuesto1(page, cita.id, 98000);
     await entrarComo(page, 'mecanico@taller.test');
     await page.request.post(`/api/ordenes/${orden.id}/solicitudes`, { data: { partidas: [{ descripcion: 'Cambiar aceite', horasEstimadas: 0.5, piezasEstimadasCentimos: 3000 }] } });
     await entrarComo(page, 'ana@cliente.test');
@@ -189,8 +187,7 @@ test.describe('Reglas de negocio desde la interfaz', () => {
   test('no se puede completar con trabajos sin terminar; la interfaz dice por qué', async ({ page }) => {
     const vehiculoId = await clienteListo(page);
     const cita = await (await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-09', '09:00'), descripcionProblema: 'x' } })).json();
-    await entrarComo(page, 'jefe@taller.test');
-    const orden = await (await page.request.post(`/api/citas/${cita.id}/recibir`, { data: { kmEntrada: 98000 } })).json();
+    const orden = await recibirEnPuesto1(page, cita.id, 98000);
     await entrarComo(page, 'mecanico@taller.test');
     const s = await (await page.request.post(`/api/ordenes/${orden.id}/solicitudes`, { data: { partidas: [{ descripcion: 'Cambiar aceite', horasEstimadas: 0.5, piezasEstimadasCentimos: 0 }] } })).json();
     await entrarComo(page, 'ana@cliente.test');
@@ -205,8 +202,7 @@ test.describe('Reglas de negocio desde la interfaz', () => {
   test('usar más piezas de las que hay: aviso en el formulario y 409 en la API', async ({ page }) => {
     const vehiculoId = await clienteListo(page);
     const cita = await (await page.request.post('/api/citas', { data: { vehiculoId, inicio: madrid('2026-11-09', '09:00'), descripcionProblema: 'x' } })).json();
-    await entrarComo(page, 'jefe@taller.test');
-    const orden = await (await page.request.post(`/api/citas/${cita.id}/recibir`, { data: { kmEntrada: 98000 } })).json();
+    const orden = await recibirEnPuesto1(page, cita.id, 98000);
     await entrarComo(page, 'mecanico@taller.test');
     const s = await (await page.request.post(`/api/ordenes/${orden.id}/solicitudes`, { data: { partidas: [{ descripcion: 'Cambiar aceite', horasEstimadas: 0.5, piezasEstimadasCentimos: 0 }] } })).json();
     await entrarComo(page, 'ana@cliente.test');

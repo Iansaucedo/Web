@@ -11,14 +11,15 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { Cabecera, Carga } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
-import { useDatos } from '../../../../lib/hooks';
+import { useListado } from '../../../../lib/hooks';
+import { Paginacion, CeldaOrden } from '../../../../components/Paginacion';
 import { CATEGORIAS, euros } from '../../../../lib/formato';
-import type { Lista, Pieza } from '../../../../lib/tipos';
+import type { Pieza } from '../../../../lib/tipos';
 
 /** Catálogo en modo consulta: el mecánico ve qué hay y cuánto; solo el jefe cambia el stock. */
 export default function CatalogoMecanico() {
   const [q, setQ] = useState('');
-  const piezas = useDatos<Lista<Pieza>>(`/piezas${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`);
+  const piezas = useListado<Pieza>('/piezas', { q: q.trim() }, { orden: 'nombre', dir: 'asc' });
   return (
     <>
       <Cabecera titulo="Catálogo de piezas" subtitulo="Consulta. Para usar una pieza, regístrala desde la orden; si falta, pídela." />
@@ -29,7 +30,12 @@ export default function CatalogoMecanico() {
             <TableContainer>
               <Table aria-label="Catálogo de piezas">
                 <TableHead>
-                  <TableRow><TableCell>Referencia</TableCell><TableCell>Pieza</TableCell><TableCell align="right">Precio</TableCell><TableCell align="right">Stock</TableCell></TableRow>
+                  <TableRow>
+                    <CeldaOrden listado={piezas} campo="referencia">Referencia</CeldaOrden>
+                    <CeldaOrden listado={piezas} campo="nombre">Pieza</CeldaOrden>
+                    <CeldaOrden listado={piezas} campo="precio" align="right">Precio</CeldaOrden>
+                    <CeldaOrden listado={piezas} campo="stock" align="right">Stock</CeldaOrden>
+                  </TableRow>
                 </TableHead>
                 <TableBody>
                   {d.datos.map((p) => (
@@ -47,6 +53,7 @@ export default function CatalogoMecanico() {
           </Card>
         )}
       </Carga>
+      <Paginacion listado={piezas} nombre={['pieza', 'piezas']} />
     </>
   );
 }

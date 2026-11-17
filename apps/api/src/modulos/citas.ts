@@ -1,4 +1,4 @@
-import type { Prisma, Usuario } from '@prisma/client';
+import type { ConfigTaller, Prisma, Usuario } from '@prisma/client';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
@@ -13,8 +13,12 @@ import { franjasDelDia, libresEnFranja, ocupacionDia, validarFranja, esLaborable
 import { avisar, avisarRoles } from '../servicios/avisos';
 import { registrarEvento } from '../servicios/eventos';
 import { fechaLarga, hora, numeroOrden } from '../emails/formato';
-import { Dia, Id, Instante, ParamId, TextoLargo, lista } from './esquemas';
+import { Dia, Id, Instante, ParamId, TextoLargo } from './esquemas';
 import { OrdenResumenSchema, aOrdenResumen } from './ordenes-esquemas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
+
+/** Cada cliente, como mucho 20 al día: cada una envía avisos y emails al taller. */
+const LIMITE_CITAS = { grupo: 'citas', maximo: 20 };
 
 // ─── Disponibilidad ──────────────────────────────────────────────────
 
@@ -84,8 +88,9 @@ export const CitaSchema = z
 const incluir = { vehiculo: true, cliente: { include: { usuario: true } }, orden: { select: { id: true } } } satisfies Prisma.CitaInclude;
 type CitaBd = Prisma.CitaGetPayload<{ include: typeof incluir }>;
 
-async function aCita(x: CitaBd) {
-  const c = await obtenerConfig(prisma);
+/** `config` se pasa en los listados para no leerla una vez por cita. */
+async function aCita(x: CitaBd, config?: ConfigTaller) {
+  const c = config ?? (await obtenerConfig(prisma));
   return {
     id: x.id,
     estado: x.estado,
@@ -144,9 +149,16 @@ definir({
   ruta: '/citas',
   etiqueta: 'Citas',
   resumen: 'Listar citas',
-  descripcion: 'El cliente ve las suyas. El personal ve todas, filtrando por día (`fecha`) o rango, y por estado.',
-  query: z.object({ fecha: Dia.optional(), desde: Dia.optional(), hasta: Dia.optional(), estado: EstadoCita.optional() }),
-  respuesta: lista(CitaSchema),
+  descripcion: 'El cliente ve las suyas (por defecto, las más recientes primero). El personal ve todas (por defecto, por hora), filtrando por día (`fecha`) o rango, y por estado. Paginado.',
+  query: z.object({
+    fecha: Dia.optional(),
+    desde: Dia.optional(),
+    hasta: Dia.optional(),
+    estado: EstadoCita.optional(),
+    activas: z.enum(['true', 'false']).optional().openapi({ description: '`true`: solo pendientes y confirmadas' }),
+    ...consultaPaginada(['inicio', 'estado', 'creadaEn']),
+  }),
+  respuesta: listaPaginada(CitaSchema),
   manejador: async ({ usuario, query }) => {
     const c = await obtenerConfig(prisma);
     const where: Prisma.CitaWhereInput = esPersonal(usuario) ? {} : { cliente: { usuarioId: usuario.id } };
@@ -159,8 +171,14 @@ definir({
       };
     }
     if (query.estado) where.estado = query.estado;
-    const citas = await prisma.cita.findMany({ where, include: incluir, orderBy: { inicio: esPersonal(usuario) ? 'asc' : 'desc' }, take: 300 });
-    return { datos: await Promise.all(citas.map(aCita)) };
+    else if (query.activas === 'true') where.estado = { in: ['PENDIENTE', 'CONFIRMADA'] };
+    const orderBy: Prisma.CitaOrderByWithRelationInput[] = ordenar(
+      query,
+      { inicio: (dir) => ({ inicio: dir }), estado: (dir) => ({ estado: dir }), creadaEn: (dir) => ({ creadaEn: dir }) },
+      { orden: 'inicio', dir: esPersonal(usuario) ? 'asc' : 'desc' },
+    );
+    const [total, citas] = await Promise.all([prisma.cita.count({ where }), prisma.cita.findMany({ where, include: incluir, orderBy, ...saltoYTope(query) })]);
+    return pagina(await Promise.all(citas.map((x) => aCita(x, c))), total, query);
   },
 });
 
@@ -178,6 +196,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/citas',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Reservar una cita',
   descripcion:
@@ -226,6 +245,7 @@ function exigirAntelacion(inicio: Date, horas: number) {
 definir({
   metodo: 'patch',
   ruta: '/citas/:id',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Cambiar la franja de una cita',
   descripcion: 'Solo el cliente, con la antelación mínima configurada (24 h). La cita vuelve a PENDIENTE para que el taller la confirme.',
@@ -248,11 +268,15 @@ definir({
       if (!r.count) throw conflicto('CITA_NO_ACTIVA', 'La cita ya no se puede cambiar');
       const actual = await tx.cita.findUniqueOrThrow({ where: { id: previa.id }, include: incluir });
       const datos = datosEmail(actual, c.zonaHoraria);
-      await avisar(tx, usuario.id, {
-        tipo: 'CITA_MODIFICADA',
-        mensaje: `Cita cambiada al ${datos.fecha} a las ${datos.hora}`,
-        enlace: '/ordenes',
-        datos: { ...datos, antes: `${fechaLarga(previa.inicio, c.zonaHoraria)}, ${hora(previa.inicio, c.zonaHoraria)}` },
+      const antes = `${fechaLarga(previa.inicio, c.zonaHoraria)}, ${hora(previa.inicio, c.zonaHoraria)}`;
+      // Al cliente de la cita (si la cambia el dueño en su nombre, el aviso no debe llegarle al dueño).
+      await avisar(tx, previa.cliente.usuarioId, { tipo: 'CITA_MODIFICADA', mensaje: `Cita cambiada al ${datos.fecha} a las ${datos.hora}`, enlace: '/ordenes', datos: { ...datos, antes } });
+      // La cita vuelve a «pendiente»: el jefe tiene que saberlo para confirmarla de nuevo.
+      await avisarRoles(tx, ['JEFE'], {
+        tipo: 'CITA_MODIFICADA_TALLER',
+        mensaje: `Cita cambiada, por confirmar: ${previa.vehiculo.matricula}, ${datos.fecha} ${datos.hora}`,
+        enlace: `/jefe/citas?fecha=${diaLocal(actual.inicio, c.zonaHoraria)}`,
+        datos: { ...datos, antes, cliente: previa.cliente.razonSocial ?? previa.cliente.usuario.nombre },
       });
     });
     return aCita(await prisma.cita.findUniqueOrThrow({ where: { id: previa.id }, include: incluir }));
@@ -262,6 +286,7 @@ definir({
 definir({
   metodo: 'post',
   ruta: '/citas/:id/cancelar',
+  limiteDiario: LIMITE_CITAS,
   etiqueta: 'Citas',
   resumen: 'Cancelar una cita',
   descripcion: 'El cliente, con la antelación mínima. El jefe, en cualquier momento antes de recibir el vehículo y con motivo.',

@@ -12,15 +12,16 @@ import Typography from '@mui/material/Typography';
 import { Cabecera, Carga, Confirmar, Vacio, useDialogo } from '../../../../components/Comunes';
 import { ChipEstado } from '../../../../components/ChipEstado';
 import { api } from '../../../../lib/api';
-import { useAccion, useDatos } from '../../../../lib/hooks';
+import { useAccion, useListado } from '../../../../lib/hooks';
+import { Paginacion } from '../../../../components/Paginacion';
 import { ESTADO_PEDIDO, fechaHora } from '../../../../lib/formato';
-import type { Lista, Pedido } from '../../../../lib/tipos';
+import type { Pedido } from '../../../../lib/tipos';
 
 const PESTANAS = [['PENDIENTE', 'Por aprobar'], ['APROBADO', 'Aprobados'], ['PEDIDO', 'Pedidos'], ['RECIBIDO', 'Recibidos'], ['RECHAZADO', 'Rechazados']];
 
 export default function Pedidos() {
   const [estado, setEstado] = useState('PENDIENTE');
-  const pedidos = useDatos<Lista<Pedido>>(`/pedidos?estado=${estado}`);
+  const pedidos = useListado<Pedido>('/pedidos', { estado }, { orden: 'creadoEn', dir: 'desc' });
   const rechazar = useDialogo<Pedido>();
   const [motivo, setMotivo] = useState('');
   const acc = useAccion();
@@ -62,6 +63,7 @@ export default function Pedidos() {
           )
         }
       </Carga>
+      <Paginacion listado={pedidos} nombre={['pedido', 'pedidos']} ordenes={[{ valor: 'creadoEn', texto: 'Fecha del pedido', dir: 'desc' }, { valor: 'actualizadoEn', texto: 'Último cambio', dir: 'desc' }]} />
       <Confirmar
         abierto={rechazar.abierto}
         titulo="Rechazar pedido"

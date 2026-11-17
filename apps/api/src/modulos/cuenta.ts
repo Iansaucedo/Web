@@ -1,10 +1,11 @@
+import type { Prisma } from '@prisma/client';
 import { z } from '../openapi/zod';
 import { definir } from '../lib/ruta';
 import { prisma } from '../db';
 import { transaccion } from '../lib/transaccion';
 import { noEncontrado, prohibido, reglaNegocio } from '../lib/errores';
 import { avisar } from '../servicios/avisos';
-import { aUsuario, ParamId, UsuarioSchema, Id, Instante, lista } from './esquemas';
+import { aUsuario, ParamId, UsuarioSchema, Id, Instante } from './esquemas';
 import { obtenerConfig } from '../servicios/config';
 import { dejarConstancia } from '../servicios/constancias';
 import { DIAS_RECUPERACION } from '../servicios/bajas';
@@ -13,6 +14,7 @@ import { conflicto } from '../lib/errores';
 import { reloj } from '../lib/reloj';
 import { diaLargo } from '../emails/formato';
 import { diaLocal, sumarDias } from '../lib/fechas';
+import { consultaPaginada, listaPaginada, ordenar, pagina, saltoYTope } from '../lib/paginacion';
 
 // ─── Perfil ──────────────────────────────────────────────────────────
 
@@ -166,6 +168,13 @@ definir({
 
 // ─── Avisos (campana) ────────────────────────────────────────────────
 
+/** Grupos de avisos de la pantalla de notificaciones (los mismos que los filtros de la web). */
+const GRUPOS_AVISO: Record<'autorizaciones' | 'citas' | 'ordenes', Prisma.NotificacionWhereInput> = {
+  autorizaciones: { tipo: 'SOLICITUD_AUTORIZACION' },
+  citas: { OR: [{ tipo: { startsWith: 'CITA_' } }, { tipo: { startsWith: 'RESERVA_MULTIPLE' } }, { tipo: { in: ['RECORDATORIO_CITA', 'HUECO_OFRECIDO', 'OFERTA_RECHAZADA'] } }] },
+  ordenes: { OR: ['ORDEN', 'VEHICULO', 'PIEZAS', 'REPARACION', 'ENTREGA'].map((t) => ({ tipo: { contains: t } })) },
+};
+
 const NotificacionSchema = z
   .object({ id: Id, tipo: z.string(), mensaje: z.string(), enlace: z.string().nullable(), leida: z.boolean(), creadaEn: Instante })
   .openapi('Notificacion');
@@ -175,19 +184,22 @@ definir({
   ruta: '/notificaciones',
   etiqueta: 'Avisos',
   resumen: 'Mis avisos',
-  descripcion: 'Los 50 más recientes y el número de no leídos.',
-  query: z.object({ soloNoLeidas: z.enum(['true', 'false']).optional() }),
-  respuesta: lista(NotificacionSchema).extend({ noLeidas: z.number().int() }),
+  descripcion: 'Paginados, los más recientes primero, y el número total de no leídos.',
+  query: z.object({
+    soloNoLeidas: z.enum(['true', 'false']).optional(),
+    grupo: z.enum(['autorizaciones', 'citas', 'ordenes']).optional().openapi({ description: 'Solo los avisos de ese grupo' }),
+    ...consultaPaginada(['creadaEn']),
+  }),
+  respuesta: listaPaginada(NotificacionSchema).extend({ noLeidas: z.number().int() }),
   manejador: async ({ usuario, query }) => {
-    const [datos, noLeidas] = await Promise.all([
-      prisma.notificacion.findMany({
-        where: { usuarioId: usuario.id, ...(query.soloNoLeidas === 'true' ? { leida: false } : {}) },
-        orderBy: { creadaEn: 'desc' },
-        take: 50,
-      }),
+    const where: Prisma.NotificacionWhereInput = { usuarioId: usuario.id, ...(query.soloNoLeidas === 'true' ? { leida: false } : {}), ...(query.grupo ? GRUPOS_AVISO[query.grupo] : {}) };
+    const orderBy: Prisma.NotificacionOrderByWithRelationInput[] = ordenar(query, { creadaEn: (dir) => ({ creadaEn: dir }) }, { orden: 'creadaEn', dir: 'desc' });
+    const [total, datos, noLeidas] = await Promise.all([
+      prisma.notificacion.count({ where }),
+      prisma.notificacion.findMany({ where, orderBy, ...saltoYTope(query) }),
       prisma.notificacion.count({ where: { usuarioId: usuario.id, leida: false } }),
     ]);
-    return { datos: datos.map(({ usuarioId: _u, ...n }) => n), noLeidas };
+    return { ...pagina(datos.map(({ usuarioId: _u, ...n }) => n), total, query), noLeidas };
   },
 });
 
@@ -202,6 +214,24 @@ definir({
   manejador: async ({ usuario, params }) => {
     const r = await prisma.notificacion.updateMany({ where: { id: params.id, usuarioId: usuario.id }, data: { leida: true } });
     if (!r.count) throw noEncontrado('El aviso');
+  },
+});
+
+definir({
+  metodo: 'post',
+  ruta: '/notificaciones/leer-ruta',
+  etiqueta: 'Avisos',
+  resumen: 'Marcar como leídos los avisos de una página',
+  descripcion:
+    'La web lo llama al abrir cada página: los avisos sin leer que enlazan a esa ruta (sin contar la query: `/jefe/citas?fecha=…` es de `/jefe/citas`) se dan por vistos, se llegue desde el aviso, desde el menú o por un enlace.',
+  cuerpo: z.object({ ruta: z.string().regex(/^\/[^?#\s]{0,300}$/, 'Ruta de la web sin query, p. ej. /jefe/pedidos') }).strict(),
+  respuesta: z.object({ marcados: z.number().int() }),
+  manejador: async ({ usuario, cuerpo }) => {
+    const r = await prisma.notificacion.updateMany({
+      where: { usuarioId: usuario.id, leida: false, OR: [{ enlace: cuerpo.ruta }, { enlace: { startsWith: `${cuerpo.ruta}?` } }] },
+      data: { leida: true },
+    });
+    return { marcados: r.count };
   },
 });
 
