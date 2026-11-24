@@ -153,7 +153,9 @@ const iniciales = (nombre: string) =>
     .join('');
 
 const ANCHO = 280;
-const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.paper' } as const;
+// Fondo «surface container low» de M3 (el del navigation drawer), no el blanco puro de `paper`: en blanco el menú
+// desentonaba con el fondo azulado de la página al abrirse.
+const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'm3.surfaceContainerLow' } as const;
 
 function Campana() {
   const [ancla, setAncla] = useState<HTMLElement | null>(null);

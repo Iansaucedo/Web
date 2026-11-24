@@ -38,7 +38,7 @@ export default function Usuarios() {
   const esCoDueno = usuario.rol === 'CO_DUENO';
   return (
     <>
-      <Cabecera titulo="Usuarios" acciones={<Button variant="contained" onClick={() => invitar.abrir(true)}>Invitar jefe de taller</Button>} />
+      <Cabecera titulo="Usuarios" acciones={<Button variant="contained" onClick={() => invitar.abrir(true)}>Invitar</Button>} />
       {acc.error && !baja.abierto && !invitar.abierto && <Alert severity="error" sx={{ mb: 2 }} onClose={acc.limpiarError}>{acc.error}</Alert>}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
         <TextField label="Buscar" value={q} onChange={(e) => setQ(e.target.value)} sx={{ maxWidth: 320 }} />
@@ -100,8 +100,8 @@ export default function Usuarios() {
         onConfirmar={async () => { const ok = await acc.ejecutar(() => api.patch(`/usuarios/${baja.valor!.id}`, { activo: false }), 'Usuario dado de baja'); if (ok) { baja.cerrar(); void lista.recargar(); } }}>
         <Typography>{baja.valor?.nombre} ({baja.valor?.email}) perderá el acceso al momento. Su historial se conserva.</Typography>
       </Confirmar>
-      <Confirmar abierto={invitar.abierto} titulo="Invitar personal" textoConfirmar="Enviar invitación" ocupado={acc.ocupado} error={acc.error} deshabilitado={!email.includes('@')} onCerrar={() => { invitar.cerrar(); acc.limpiarError(); }}
-        onConfirmar={async () => { const ok = await acc.ejecutar((clave) => api.post('/invitaciones', { email, rol: esCoDueno ? 'JEFE' : rolInvitar }, { claveIdempotencia: clave }), 'Invitación enviada'); if (ok) { invitar.cerrar(); setEmail(''); } }}>
+      <Confirmar abierto={invitar.abierto} titulo="Invitar personal" textoConfirmar="Enviar invitación" ocupado={acc.ocupado} error={acc.error} deshabilitado={!email.includes('@')} onCerrar={() => { invitar.cerrar(); acc.limpiarError(); setRolInvitar('JEFE'); }}
+        onConfirmar={async () => { const ok = await acc.ejecutar((clave) => api.post('/invitaciones', { email, rol: esCoDueno ? 'JEFE' : rolInvitar }, { claveIdempotencia: clave }), 'Invitación enviada'); if (ok) { invitar.cerrar(); setEmail(''); setRolInvitar('JEFE'); } }}>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField label="Email de Google" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           {!esCoDueno && (
