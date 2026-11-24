@@ -153,9 +153,7 @@ const iniciales = (nombre: string) =>
     .join('');
 
 const ANCHO = 280;
-// Fondo «surface container low» de M3 (el del navigation drawer), no el blanco puro de `paper`: en blanco el menú
-// desentonaba con el fondo azulado de la página al abrirse.
-const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'm3.surfaceContainerLow' } as const;
+const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.paper' } as const;
 
 function Campana() {
   const [ancla, setAncla] = useState<HTMLElement | null>(null);
@@ -315,7 +313,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   // Como en Figma: la marca arriba del menú lateral y «Cerrar sesión» abajo del todo.
   const lateral = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <Box component={Link} href="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 3, py: 2.5, color: 'text.primary', textDecoration: 'none' }}>
         <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'grid', placeItems: 'center' }} aria-hidden="true">
           <BuildIcon />
@@ -347,7 +345,8 @@ export function Shell({ children }: { children: ReactNode }) {
       >
         Saltar al contenido
       </Box>
-      <AppBar position="fixed" sx={{ width: { md: `calc(100% - ${anchoFijo}px)` }, ml: { md: `${anchoFijo}px` }, bgcolor: 'background.paper', transition: (t) => t.transitions.create(['width', 'margin'], { duration: t.transitions.duration.shorter }) }}>
+      {/* La barra ocupa todo el ancho y queda por encima del menú fijo: al plegarlo o desplegarlo no se mueve. */}
+      <AppBar position="fixed" sx={{ bgcolor: 'background.paper', zIndex: (t) => t.zIndex.drawer + 1 }}>
         <Toolbar sx={{ gap: 1 }}>
           <IconButton
             aria-label={escritorio ? (plegado ? 'Mostrar menú lateral' : 'Ocultar menú lateral') : 'Abrir menú'}
@@ -398,6 +397,8 @@ export function Shell({ children }: { children: ReactNode }) {
           '& .MuiDrawer-paper': PAPEL,
         }}
       >
+        {/* Hueco de la barra superior, que queda encima del menú. */}
+        <Toolbar />
         {lateral}
       </Drawer>
       <Box component="main" id="contenido" tabIndex={-1} sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto', '&:focus': { outline: 'none' } }}>
