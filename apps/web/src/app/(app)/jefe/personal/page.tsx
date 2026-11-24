@@ -234,7 +234,7 @@ export default function Personal() {
         <TextField label="Email de Google" type="email" value={email} onChange={(e) => setEmail(e.target.value)} helperText="Entrará con esta cuenta de Google y tendrá el rol directamente" />
         <TextField select label="Rol" value={rol} onChange={(e) => setRol(e.target.value)}>
           <MenuItem value="MECANICO">Mecánico</MenuItem>
-          {usuario.rol === 'DUENO' && <MenuItem value="JEFE">Jefe de taller</MenuItem>}
+          {(usuario.rol === 'DUENO' || usuario.rol === 'CO_DUENO') && <MenuItem value="JEFE">Jefe de taller</MenuItem>}
         </TextField>
       </Confirmar>
       <Confirmar abierto={nuevoPuesto.abierto} titulo="Nuevo puesto" textoConfirmar="Crear" ocupado={acc.ocupado} error={acc.error} deshabilitado={!nombrePuesto.trim()} onCerrar={() => { nuevoPuesto.cerrar(); acc.limpiarError(); }}

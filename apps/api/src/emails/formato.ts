@@ -16,5 +16,5 @@ export const numeroReserva = (n: number) => `RM-${String(n).padStart(2, '0')}`;
 /** «a, b y c» */
 export const enumerar = (xs: string[]) => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
 
-export const ROL_TEXTO: Record<string, string> = { CLIENTE: 'cliente', MECANICO: 'mecánico', JEFE: 'jefe de taller', DUENO: 'dueño' };
+export const ROL_TEXTO: Record<string, string> = { CLIENTE: 'cliente', MECANICO: 'mecánico', JEFE: 'jefe de taller', DUENO: 'dueño', CO_DUENO: 'co-dueño' };
 export const FICHAJE_TEXTO: Record<string, string> = { ENTRADA: 'Entrada', INICIO_PAUSA: 'Inicio de pausa', FIN_PAUSA: 'Fin de pausa', SALIDA: 'Salida' };

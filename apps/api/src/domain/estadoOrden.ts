@@ -2,8 +2,8 @@ import type { EstadoOrden, Rol } from '@prisma/client';
 
 type Transicion = { a: EstadoOrden; roles: Rol[] };
 
-const TALLER: Rol[] = ['MECANICO', 'JEFE', 'DUENO'];
-const GESTION: Rol[] = ['JEFE', 'DUENO'];
+const TALLER: Rol[] = ['MECANICO', 'JEFE', 'DUENO', 'CO_DUENO'];
+const GESTION: Rol[] = ['JEFE', 'DUENO', 'CO_DUENO'];
 const SISTEMA: Rol[] = []; // solo las dispara el sistema (p. ej. al responder partidas)
 
 export const TRANSICIONES_ORDEN: Record<EstadoOrden, Transicion[]> = {

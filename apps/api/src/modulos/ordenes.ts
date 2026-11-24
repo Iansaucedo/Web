@@ -287,7 +287,7 @@ definir({
     const emp = await empleadoDe(usuario);
     const id = await transaccion(async (tx) => {
       const o = await bloquearOrden(tx, params.id, ['EN_DIAGNOSTICO', 'EN_REPARACION'], 'pedir autorización', usuario);
-      assertTransicion(o.estado, 'ESPERANDO_AUTORIZACION', usuario.rol === 'DUENO' ? 'JEFE' : usuario.rol);
+      assertTransicion(o.estado, 'ESPERANDO_AUTORIZACION', usuario.rol === 'DUENO' || usuario.rol === 'CO_DUENO' ? 'JEFE' : usuario.rol);
       const c = await obtenerConfig(tx);
       const creada = await tx.solicitudAutorizacion.create({ data: { ordenId: o.id, creadaPorId: emp.id, creadaEn: reloj.ahora() } });
       // Una a una y en orden, para adjuntar a cada trabajo sus fotos; si alguna foto no vale, no se crea nada.
@@ -402,7 +402,7 @@ definir({
   manejador: async ({ usuario, params, cuerpo }) => {
     await transaccion(async (tx) => {
       const o = await bloquearOrden(tx, params.id, ['EN_REPARACION', 'ESPERANDO_PIEZAS'], 'cambiar el estado', usuario);
-      assertTransicion(o.estado, cuerpo.estado, usuario.rol === 'DUENO' ? 'JEFE' : usuario.rol);
+      assertTransicion(o.estado, cuerpo.estado, usuario.rol === 'DUENO' || usuario.rol === 'CO_DUENO' ? 'JEFE' : usuario.rol);
       await tx.orden.update({ where: { id: o.id }, data: { estado: cuerpo.estado } });
       const espera = cuerpo.estado === 'ESPERANDO_PIEZAS';
       await registrarEvento(tx, o.id, 'ESTADO_CAMBIADO', usuario.id, { de: o.estado, a: cuerpo.estado, texto: espera ? 'Esperando piezas' : 'Reparación reanudada' });

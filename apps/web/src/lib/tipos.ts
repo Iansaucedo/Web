@@ -1,5 +1,5 @@
 // Tipos de las respuestas de la API (ver /api/docs).
-export type Rol = 'CLIENTE' | 'MECANICO' | 'JEFE' | 'DUENO';
+export type Rol = 'CLIENTE' | 'MECANICO' | 'JEFE' | 'DUENO' | 'CO_DUENO';
 
 export interface Usuario {
   id: string;

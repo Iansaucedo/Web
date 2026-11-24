@@ -329,12 +329,13 @@ definir({
   descripcion: `El jefe invita mecánicos; el dueño, mecánicos y jefes. La persona entra con la cuenta de Google de ese email y recibe el rol. La invitación vale ${DIAS_INVITACION} días; caducada, se puede volver a enviar.`,
   acceso: GESTION,
   idempotente: true,
-  cuerpo: z.object({ email: z.email().transform((e) => e.trim().toLowerCase()), rol: z.enum(['MECANICO', 'JEFE']) }).strict(),
+  cuerpo: z.object({ email: z.email().transform((e) => e.trim().toLowerCase()), rol: z.enum(['MECANICO', 'JEFE', 'CO_DUENO']) }).strict(),
   respuesta: InvitacionSchema,
   codigo: 201,
-  errores: { 403: 'El jefe solo invita mecánicos', 409: 'YA_REGISTRADO o YA_INVITADO' },
+  errores: { 403: 'El jefe solo invita mecánicos y solo el dueño invita co-dueños', 409: 'YA_REGISTRADO o YA_INVITADO' },
   manejador: async ({ usuario, cuerpo }) => {
-    if (cuerpo.rol === 'JEFE' && usuario.rol !== 'DUENO') throw prohibido('Solo el dueño puede dar de alta jefes de taller');
+    if (cuerpo.rol === 'CO_DUENO' && usuario.rol !== 'DUENO') throw prohibido('Solo el dueño puede dar de alta co-dueños');
+    if (cuerpo.rol === 'JEFE' && usuario.rol !== 'DUENO' && usuario.rol !== 'CO_DUENO') throw prohibido('Solo el dueño o co-dueño puede dar de alta jefes de taller');
     if (await prisma.usuario.findUnique({ where: { email: cuerpo.email } })) {
       throw conflicto('YA_REGISTRADO', 'Ese email ya tiene cuenta. Cambia su rol desde Usuarios');
     }
@@ -411,6 +412,12 @@ definir({
     if (params.id === usuario.id) throw reglaNegocio('NO_A_TI_MISMO', 'No puedes cambiar tu propio rol ni darte de baja');
     const u = await prisma.usuario.findUnique({ where: { id: params.id }, include: { cliente: { include: { vehiculos: { take: 1 } } } } });
     if (!u) throw noEncontrado('El usuario');
+    if (u.rol === 'DUENO' && usuario.rol !== 'DUENO') throw prohibido('No puedes modificar al dueño ni darlo de baja');
+    if (usuario.rol === 'CO_DUENO') {
+      if (u.rol === 'CO_DUENO') throw prohibido('Solo el dueño puede modificar o dar de baja a un co-dueño');
+      if (cuerpo.rol && (cuerpo.rol === 'DUENO' || cuerpo.rol === 'CO_DUENO')) throw prohibido('Un co-dueño no puede asignar los roles de dueño ni co-dueño');
+    }
+    if (cuerpo.rol === 'CO_DUENO' && usuario.rol !== 'DUENO') throw prohibido('Solo el dueño puede asignar el rol de co-dueño');
     if (cuerpo.rol && cuerpo.rol !== 'CLIENTE' && u.cliente?.vehiculos.length) throw reglaNegocio('ES_CLIENTE', 'Este usuario es cliente con vehículos registrados. Debe usar otra cuenta');
     const r = await transaccion(async (tx) => {
       const daDeBaja = cuerpo.activo === false && u.activo;
@@ -513,8 +520,8 @@ async function empleadoGestionable(actor: Usuario, empleadoId: string) {
   // Solo se gestiona a quien hoy es personal: una fila de Empleado antigua (alguien que volvió a ser cliente) no cuenta.
   if (!e || (e.usuario.rol !== 'MECANICO' && e.usuario.rol !== 'JEFE')) throw noEncontrado('El empleado');
   if (e.usuarioId === actor.id) throw prohibido('No puedes darte de baja a ti mismo');
-  // El jefe gestiona mecánicos; a los jefes solo los gestiona el dueño.
-  if (e.usuario.rol === 'JEFE' && actor.rol !== 'DUENO') throw prohibido('Solo el dueño da de baja a un jefe de taller');
+  // El jefe gestiona mecánicos; a los jefes los gestionan el dueño y el co-dueño.
+  if (e.usuario.rol === 'JEFE' && actor.rol !== 'DUENO' && actor.rol !== 'CO_DUENO') throw prohibido('Solo el dueño da de baja a un jefe de taller');
   return e;
 }
 

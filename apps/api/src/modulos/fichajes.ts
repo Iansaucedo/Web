@@ -263,7 +263,7 @@ definir({
 
 /** Nadie se corrige a sí mismo, salvo el dueño (no tiene a quién pedírselo). */
 function noAutocorreccion(u: Usuario, empleadoUsuarioId: string) {
-  if (u.rol !== 'DUENO' && u.id === empleadoUsuarioId) throw prohibido('Otra persona debe revisar tus propios fichajes');
+  if (u.rol !== 'DUENO' && u.rol !== 'CO_DUENO' && u.id === empleadoUsuarioId) throw prohibido('Otra persona debe revisar tus propios fichajes');
 }
 
 async function resolver(u: Usuario, id: string, aceptar: boolean) {

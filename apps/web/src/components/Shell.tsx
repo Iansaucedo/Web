@@ -113,6 +113,7 @@ function menu(rol: Rol, empresa: boolean): Grupo[] {
         personal,
       ];
     case 'DUENO':
+    case 'CO_DUENO':
       return [
         {
           titulo: 'Negocio',
@@ -233,6 +234,7 @@ const ZONAS: Record<Rol, string[]> = {
   MECANICO: ['/mecanico', '/notificaciones'],
   JEFE: ['/jefe', '/mecanico', '/notificaciones'],
   DUENO: ['/dueno', '/jefe', '/mecanico', '/notificaciones'],
+  CO_DUENO: ['/dueno', '/jefe', '/mecanico', '/notificaciones'],
 };
 export const puedeVer = (rol: Rol, ruta: string) => ruta === '/' || ZONAS[rol].some((z) => ruta === z || ruta.startsWith(`${z}/`));
 
@@ -405,5 +407,5 @@ export function Shell({ children }: { children: ReactNode }) {
 }
 
 export function rutaInicio(rol: Rol) {
-  return { CLIENTE: '/ordenes', MECANICO: '/mecanico', JEFE: '/jefe', DUENO: '/dueno' }[rol];
+  return { CLIENTE: '/ordenes', MECANICO: '/mecanico', JEFE: '/jefe', DUENO: '/dueno', CO_DUENO: '/dueno' }[rol];
 }

@@ -17,3 +17,9 @@ DUEÑO:
 Como dueño quiero saber cuantos clientes tengo al día, los empleados que están trabajando al día, la cantidad de puestos de reparación en uso y la frecuencia de uso durante las horas del día, además de la trazabilidad de
 trabajos hechos a los máquinas que entran al taller. El sistema debe gestionar las citas del taller y el vehiculo y cliente asociado a cada cita. A la cita debe asociar el proceso de reparación, diagnóstico, piezas y una
 linea de tiempo de los trabajos realizados por el mecánico que deben ser mostrados transparentemente al cliente.
+
+CO-DUEÑO:
+Tiene las mismas vistas y permisos que el dueño (estadísticas, trazabilidad, configuración, usuarios y gestión del taller), con dos restricciones de seguridad:
+1. No puede modificar ni dar de baja al dueño ni a otros co-dueños.
+2. No puede crear ni promover a otros usuarios a dueño o co-dueño.
+Solo el dueño puede dar de alta o invitar usuarios con este rol, y el dueño puede desactivar o reactivar al co-dueño en cualquier momento.

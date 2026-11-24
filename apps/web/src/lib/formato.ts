@@ -56,7 +56,7 @@ export const ESTADO_PEDIDO: Record<string, { texto: string; tono: Tono }> = {
 };
 
 export const FICHAJE: Record<string, string> = { ENTRADA: 'Entrada', INICIO_PAUSA: 'Inicio de pausa', FIN_PAUSA: 'Fin de pausa', SALIDA: 'Salida' };
-export const ROL: Record<string, string> = { CLIENTE: 'Cliente', MECANICO: 'Mecánico', JEFE: 'Jefe de taller', DUENO: 'Dueño' };
+export const ROL: Record<string, string> = { CLIENTE: 'Cliente', MECANICO: 'Mecánico', JEFE: 'Jefe de taller', DUENO: 'Dueño', CO_DUENO: 'Co-dueño' };
 
 export const CATEGORIAS: Record<string, string> = {
   FRENOS: 'Frenos', MOTOR: 'Motor', FILTROS: 'Filtros', ACEITES: 'Aceites', ENCENDIDO: 'Encendido', ELECTRICIDAD: 'Electricidad',

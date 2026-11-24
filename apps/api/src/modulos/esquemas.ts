@@ -12,7 +12,7 @@ export const Instante = z.iso.datetime({ offset: true }).openapi({ example: '202
 export const Centimos = z.number().int().openapi({ description: 'Importe en céntimos', example: 12100 });
 export const TextoCorto = z.string().trim().min(1).max(200);
 export const TextoLargo = z.string().trim().min(1).max(2000);
-export const Rol = z.enum(['CLIENTE', 'MECANICO', 'JEFE', 'DUENO']);
+export const Rol = z.enum(['CLIENTE', 'MECANICO', 'JEFE', 'DUENO', 'CO_DUENO']);
 export const Ok = z.object({ ok: z.literal(true) });
 
 export const ClienteSchema = z

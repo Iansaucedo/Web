@@ -2,8 +2,8 @@ import type { Rol, Usuario } from '@prisma/client';
 import { prisma } from '../db';
 import { noEncontrado, prohibido, reglaNegocio } from '../lib/errores';
 
-export const PERSONAL: Rol[] = ['MECANICO', 'JEFE', 'DUENO'];
-export const GESTION: Rol[] = ['JEFE', 'DUENO'];
+export const PERSONAL: Rol[] = ['MECANICO', 'JEFE', 'DUENO', 'CO_DUENO'];
+export const GESTION: Rol[] = ['JEFE', 'DUENO', 'CO_DUENO'];
 export const esPersonal = (u: Usuario) => PERSONAL.includes(u.rol);
 export const esGestion = (u: Usuario) => GESTION.includes(u.rol);
 

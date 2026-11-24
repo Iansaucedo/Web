@@ -168,6 +168,51 @@ describe('invitaciones y usuarios', () => {
     expect((await mec.get('/api/clientes')).status).toBe(403);
     expect((await anonimo().get('/api/usuarios')).status).toBe(401);
   });
+
+  describe('rol CO_DUENO', () => {
+    it('el dueño puede dar de alta o invitar un co-dueño, pero un jefe o co-dueño no', async () => {
+      const dueno = await entrar('dueno@taller.test', 'DUENO');
+      const jefe = await entrar('jefe@taller.test', 'JEFE');
+      const codueno = await entrar('codueno@taller.test', 'CO_DUENO');
+
+      // Dueño invita a co-dueño -> ok
+      const r = await dueno.post('/api/invitaciones').send({ email: 'nuevo.codueno@taller.test', rol: 'CO_DUENO' });
+      expect(r.status).toBe(201);
+      expect(r.body.rol).toBe('CO_DUENO');
+
+      // Jefe intenta invitar a co-dueño -> 403
+      expect((await jefe.post('/api/invitaciones').send({ email: 'otro1@taller.test', rol: 'CO_DUENO' })).status).toBe(403);
+
+      // Co-dueño intenta invitar a co-dueño -> 403
+      expect((await codueno.post('/api/invitaciones').send({ email: 'otro2@taller.test', rol: 'CO_DUENO' })).status).toBe(403);
+    });
+
+    it('el co-dueño tiene vistas de dueño pero no puede modificar al dueño ni agregar co-dueño', async () => {
+      const dueno = await entrar('dueno@taller.test', 'DUENO');
+      const codueno = await entrar('codueno@taller.test', 'CO_DUENO');
+      const codueno2 = await entrar('codueno2@taller.test', 'CO_DUENO');
+      const mec = await entrar('mec1@taller.test', 'MECANICO');
+
+      // Co-dueño accede a estadísticas y usuarios (mismas vistas y permisos)
+      expect((await codueno.get('/api/usuarios')).status).toBe(200);
+      expect((await codueno.get('/api/estadisticas?desde=2026-11-01&hasta=2026-11-24')).status).toBe(200);
+
+      // Co-dueño no puede modificar ni dar de baja al dueño -> 403
+      expect((await codueno.patch(`/api/usuarios/${dueno.usuarioId}`).send({ activo: false })).status).toBe(403);
+      expect((await codueno.patch(`/api/usuarios/${dueno.usuarioId}`).send({ rol: 'JEFE' })).status).toBe(403);
+
+      // Co-dueño no puede modificar a otro co-dueño -> 403
+      expect((await codueno.patch(`/api/usuarios/${codueno2.usuarioId}`).send({ activo: false })).status).toBe(403);
+
+      // Co-dueño no puede promover a nadie a co-dueño ni a dueño -> 403
+      expect((await codueno.patch(`/api/usuarios/${mec.usuarioId}`).send({ rol: 'CO_DUENO' })).status).toBe(403);
+      expect((await codueno.patch(`/api/usuarios/${mec.usuarioId}`).send({ rol: 'DUENO' })).status).toBe(403);
+
+      // El dueño sí puede desactivar al co-dueño en cualquier momento
+      expect((await dueno.patch(`/api/usuarios/${codueno.usuarioId}`).send({ activo: false })).status).toBe(200);
+      expect((await codueno.get('/api/auth/me')).status).toBe(401);
+    });
+  });
 });
 
 void AHORA;

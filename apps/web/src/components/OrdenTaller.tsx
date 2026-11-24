@@ -357,7 +357,7 @@ export function OrdenTaller({ id }: { id: string }) {
   const { usuario } = useSesion();
   const orden = useDatos<OrdenDetalle>(`/ordenes/${id}`);
   const config = useDatos<{ tarifaHoraCentimos: number }>('/config');
-  const puestos = useDatos<Lista<Puesto>>(usuario.rol === 'JEFE' || usuario.rol === 'DUENO' ? '/puestos' : null);
+  const puestos = useDatos<Lista<Puesto>>(usuario.rol === 'JEFE' || usuario.rol === 'DUENO' || usuario.rol === 'CO_DUENO' ? '/puestos' : null);
   const solicitud = useDialogo();
   const obs = useDialogo();
   const completar = useDialogo();
@@ -368,7 +368,7 @@ export function OrdenTaller({ id }: { id: string }) {
   const [entrega, setEntrega] = useState<string | null>(null);
   const [kmSalida, setKmSalida] = useState('');
   const acc = useAccion();
-  const gestion = usuario.rol === 'JEFE' || usuario.rol === 'DUENO';
+  const gestion = usuario.rol === 'JEFE' || usuario.rol === 'DUENO' || usuario.rol === 'CO_DUENO';
 
   return (
     <Carga {...orden}>
