@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import MuiLink from '@mui/material/Link';
 import Card from '@mui/material/Card';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
@@ -19,6 +21,7 @@ import { ESTADO_ORDEN, fechaHora } from '../../../../lib/formato';
 import type { OrdenResumen } from '../../../../lib/tipos';
 
 export default function Ordenes() {
+  const router = useRouter();
   const [estado, setEstado] = useState('abiertas');
   const [q, setQ] = useState('');
   const ordenes = useListado<OrdenResumen>(
@@ -41,7 +44,7 @@ export default function Ordenes() {
         {(d) => (
           <Card>
             <TableContainer>
-              <Table>
+              <Table aria-label="Órdenes">
                 <TableHead>
                   <TableRow>
                     <CeldaOrden listado={ordenes} campo="numero" dirInicial="desc">Orden</CeldaOrden>
@@ -54,8 +57,10 @@ export default function Ordenes() {
                 </TableHead>
                 <TableBody>
                   {d.datos.map((o) => (
-                    <TableRow key={o.id} hover component={Link} href={`/mecanico/ordenes/${o.id}`} sx={{ textDecoration: 'none' }} data-testid="fila-orden">
-                      <TableCell>{o.codigo}</TableCell>
+                    // La fila entera se puede pulsar con el ratón, pero el enlace es el código: un <a> como fila (role=row)
+                    // dejaba de anunciarse como enlace en los lectores de pantalla.
+                    <TableRow key={o.id} hover onClick={() => router.push(`/mecanico/ordenes/${o.id}`)} sx={{ cursor: 'pointer' }} data-testid="fila-orden">
+                      <TableCell><MuiLink component={Link} href={`/mecanico/ordenes/${o.id}`} underline="hover" aria-label={`Orden ${o.codigo}, ${o.vehiculo.matricula}`} onClick={(e) => e.stopPropagation()}>{o.codigo}</MuiLink></TableCell>
                       <TableCell>{o.vehiculo.marca} {o.vehiculo.modelo} · {o.vehiculo.matricula}</TableCell>
                       <TableCell>{o.cliente.nombre}</TableCell>
                       <TableCell>{o.puesto?.nombre ?? '—'}</TableCell>

@@ -32,7 +32,7 @@ export default function Pedidos() {
   return (
     <>
       <Cabecera titulo="Pedidos de piezas" />
-      <Tabs value={estado} onChange={(_, v) => setEstado(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 2 }}>
+      <Tabs aria-label="Estado de los pedidos" value={estado} onChange={(_, v) => setEstado(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 2 }}>
         {PESTANAS.map(([v, t]) => <Tab key={v} value={v} label={t} />)}
       </Tabs>
       {acc.error && !rechazar.abierto && <Alert severity="error" sx={{ mb: 2 }} onClose={acc.limpiarError}>{acc.error}</Alert>}
@@ -40,7 +40,9 @@ export default function Pedidos() {
         {(d) =>
           d.datos.length ? (
             <Stack spacing={1.5}>
-              {d.datos.map((p) => (
+              {d.datos.map((p) => {
+                const quePedido = `${p.cantidad} × ${p.pieza ? p.pieza.nombre : p.descripcionLibre}, ${p.orden.codigo}`;
+                return (
                 <Card key={p.id} data-testid="pedido">
                   <CardContent sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Stack sx={{ flex: 1, minWidth: 240 }}>
@@ -50,13 +52,14 @@ export default function Pedidos() {
                     </Stack>
                     <ChipEstado {...ESTADO_PEDIDO[p.estado]} />
                     <Stack direction="row" spacing={1}>
-                      {p.estado === 'PENDIENTE' && <><Button variant="contained" disabled={acc.ocupado} onClick={() => hacer(p, 'aprobar', 'Pedido aprobado. Avisamos al mecánico')}>Aprobar</Button><Button color="error" onClick={() => { setMotivo(''); rechazar.abrir(p); }}>Rechazar</Button></>}
-                      {p.estado === 'APROBADO' && <Button variant="tonal" disabled={acc.ocupado} onClick={() => hacer(p, 'pedido', 'Marcado como pedido al proveedor')}>Marcar pedido</Button>}
-                      {(p.estado === 'APROBADO' || p.estado === 'PEDIDO') && <Button variant="contained" disabled={acc.ocupado} onClick={() => hacer(p, 'recibir', p.pieza ? 'Recibido. El stock se ha actualizado' : 'Recibido. Avisamos al mecánico')}>Recibido</Button>}
+                      {p.estado === 'PENDIENTE' && <><Button variant="contained" disabled={acc.ocupado} onClick={() => hacer(p, 'aprobar', 'Pedido aprobado. Avisamos al mecánico')} aria-label={`Aprobar ${quePedido}`}>Aprobar</Button><Button color="error" onClick={() => { setMotivo(''); rechazar.abrir(p); }} aria-label={`Rechazar ${quePedido}`}>Rechazar</Button></>}
+                      {p.estado === 'APROBADO' && <Button variant="tonal" disabled={acc.ocupado} onClick={() => hacer(p, 'pedido', 'Marcado como pedido al proveedor')} aria-label={`Marcar pedido ${quePedido}`}>Marcar pedido</Button>}
+                      {(p.estado === 'APROBADO' || p.estado === 'PEDIDO') && <Button variant="contained" disabled={acc.ocupado} onClick={() => hacer(p, 'recibir', p.pieza ? 'Recibido. El stock se ha actualizado' : 'Recibido. Avisamos al mecánico')} aria-label={`Recibido ${quePedido}`}>Recibido</Button>}
                     </Stack>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </Stack>
           ) : (
             <Vacio titulo="No hay pedidos aquí" />

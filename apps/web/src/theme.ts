@@ -45,6 +45,10 @@ declare module '@mui/material/styles' {
   }
 }
 
+// Tamaños en rem, no en px: así la app respeta el tamaño de letra que la persona elige en el navegador (baja visión).
+// El interlineado va sin unidades para que crezca con la letra y las líneas no se monten.
+const rem = (px: number) => `${px / 16}rem`;
+
 export const theme = createTheme({
   palette: {
     mode: 'light',
@@ -64,13 +68,13 @@ export const theme = createTheme({
   typography: {
     fontFamily: 'Roboto, system-ui, sans-serif',
     // Escala M3 usada en Figma
-    h4: { fontSize: 28, lineHeight: '36px', fontWeight: 400 }, // headline small
-    h5: { fontSize: 22, lineHeight: '28px', fontWeight: 400 }, // title large
-    h6: { fontSize: 16, lineHeight: '24px', fontWeight: 500 }, // title medium
-    body1: { fontSize: 16, lineHeight: '24px' },
-    body2: { fontSize: 14, lineHeight: '20px' },
-    caption: { fontSize: 12, lineHeight: '16px' },
-    button: { fontSize: 14, lineHeight: '20px', fontWeight: 500, textTransform: 'none' },
+    h4: { fontSize: rem(28), lineHeight: 36 / 28, fontWeight: 400 }, // headline small
+    h5: { fontSize: rem(22), lineHeight: 28 / 22, fontWeight: 400 }, // title large
+    h6: { fontSize: rem(16), lineHeight: 24 / 16, fontWeight: 500 }, // title medium
+    body1: { fontSize: rem(16), lineHeight: 24 / 16 },
+    body2: { fontSize: rem(14), lineHeight: 20 / 14 },
+    caption: { fontSize: rem(12), lineHeight: 16 / 12 },
+    button: { fontSize: rem(14), lineHeight: 20 / 14, fontWeight: 500, textTransform: 'none' },
   },
   // Accesibilidad: la escala visual no decide el nivel del encabezado. Cada página tiene un h1
   // (Cabecera) y las secciones y tarjetas son h2/h3, sin saltos.
@@ -89,7 +93,7 @@ export const theme = createTheme({
       defaultProps: { disableElevation: true },
       styleOverrides: {
         root: { borderRadius: 20, paddingInline: 16, minHeight: 40 },
-        sizeLarge: { borderRadius: 28, minHeight: 56, fontSize: 16 }, // tablet del taller
+        sizeLarge: { borderRadius: 28, minHeight: 56, fontSize: rem(16) }, // tablet del taller
         outlined: { borderColor: m3.outlineVariant },
       },
       variants: [
@@ -108,13 +112,27 @@ export const theme = createTheme({
     MuiDialog: { styleOverrides: { paper: { borderRadius: 28, padding: 4 } } },
     MuiChip: { styleOverrides: { root: { borderRadius: 8, fontWeight: 500 } } },
     MuiTextField: { defaultProps: { variant: 'outlined', fullWidth: true } },
-    MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 4 } } },
+    // Borde de los campos con contraste 3:1 como mínimo (WCAG 1.4.11): el gris por defecto de MUI se quedaba en 1,7:1
+    // y con baja visión no se veía dónde estaba cada campo.
+    MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 4 }, notchedOutline: { borderColor: m3.outline } } },
+    // Opción elegida de los grupos de botones (Gráfico/Tabla, Aceptar/Rechazar…): el gris al 8 % de MUI apenas
+    // se distinguía (1,2:1). Ahora va rellena con el color del botón y texto blanco.
+    MuiToggleButton: {
+      styleOverrides: {
+        root: ({ ownerState, theme: t }) => {
+          const color = ownerState.color && ownerState.color !== 'standard' ? t.palette[ownerState.color].main : m3.primary;
+          return { '&.Mui-selected, &.Mui-selected:hover': { backgroundColor: color, color: '#FFFFFF' } };
+        },
+      },
+    },
     MuiListItemButton: {
       styleOverrides: {
         root: {
           borderRadius: 28,
           minHeight: 56,
           '&.Mui-selected': { backgroundColor: m3.secondaryContainer, color: m3.onSecondaryContainer },
+          // El relleno de la entrada actual apenas contrasta con el menú (1,2:1): también va en negrita.
+          '&.Mui-selected .MuiListItemText-primary': { fontWeight: 700 },
         },
       },
     },

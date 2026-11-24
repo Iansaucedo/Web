@@ -66,7 +66,7 @@ export default function MisOrdenes() {
                     <ChipEstado {...ESTADO_CITA[c.estado]} />
                     <Tooltip title={c.puedeCambiar ? 'Cancelar la cita' : 'Faltan menos de 24 h: llama al taller para cancelar'}>
                       <span>
-                        <IconButton aria-label="Cancelar la cita" onClick={() => cancelar.abrir(c)} disabled={!c.puedeCambiar}>
+                        <IconButton aria-label={`Cancelar la cita del ${diaLargo(c.fecha)} a las ${c.hora}`} onClick={() => cancelar.abrir(c)} disabled={!c.puedeCambiar}>
                           <CloseIcon />
                         </IconButton>
                       </span>

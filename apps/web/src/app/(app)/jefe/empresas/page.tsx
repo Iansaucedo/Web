@@ -111,7 +111,7 @@ export default function Empresas() {
                             <TableCell>
                               <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                                 <Button variant="outlined" startIcon={<PhoneIcon />} href={`tel:${r.cliente.telefono}`} aria-label={`Llamar a ${r.cliente.nombre}`}>Llamar</Button>
-                                <Button variant="contained" startIcon={<CalendarIcon />} onClick={() => { acc.limpiarError(); elegirDia(r, h?.fecha ?? ''); ofrecer.abrir(r); }}>Ofrecer hueco</Button>
+                                <Button variant="contained" startIcon={<CalendarIcon />} onClick={() => { acc.limpiarError(); elegirDia(r, h?.fecha ?? ''); ofrecer.abrir(r); }} aria-label={`Ofrecer hueco a ${r.cliente.nombre}`}>Ofrecer hueco</Button>
                               </Stack>
                             </TableCell>
                           </TableRow>
@@ -146,7 +146,7 @@ export default function Empresas() {
                           <TableCell>{r.vehiculos.length}</TableCell>
                           <TableCell>{dia(r.fechaOfrecida!)} · {enumerar(r.franjasOfrecidas.map(hora))}</TableCell>
                           <TableCell><ChipEstado tono="aviso" texto="Esperando confirmación de la empresa" /></TableCell>
-                          <TableCell align="right"><Button onClick={() => { acc.limpiarError(); confirmar.abrir(r); }}>Confirmar ya</Button></TableCell>
+                          <TableCell align="right"><Button onClick={() => { acc.limpiarError(); confirmar.abrir(r); }} aria-label={`Confirmar ya la reserva de ${r.cliente.nombre}`}>Confirmar ya</Button></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

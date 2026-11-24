@@ -62,6 +62,8 @@ function Citas() {
               {d.datos.map((c) => {
                 const activa = c.estado === 'PENDIENTE' || c.estado === 'CONFIRMADA';
                 const pasada = new Date(c.inicio) <= new Date();
+                // Los botones se repiten en cada cita: el nombre accesible dice de cuál es.
+                const deCita = `cita de las ${c.hora}, ${c.vehiculo.matricula}`;
                 return (
                   <Card key={c.id} data-testid="cita">
                     <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -73,11 +75,11 @@ function Citas() {
                       </Stack>
                       <ChipEstado {...ESTADO_CITA[c.estado]} />
                       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                        {c.estado === 'PENDIENTE' && <Button variant="tonal" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/citas/${c.id}/confirmar`), 'Cita confirmada. El cliente recibe un email'); recargar(); }}>Confirmar</Button>}
-                        {activa && esHoy && <Button variant="contained" onClick={() => { setKm(''); setNotas(''); setPuestoId(''); recibir.abrir(c); }}>Recibir</Button>}
-                        {activa && pasada && <Button onClick={() => noVino.abrir(c)}>No vino</Button>}
-                        {activa && <Button color="error" onClick={() => { setMotivo(''); cancelar.abrir(c); }}>Cancelar</Button>}
-                        {c.ordenId && <Button href={`/mecanico/ordenes/${c.ordenId}`}>Ver orden</Button>}
+                        {c.estado === 'PENDIENTE' && <Button variant="tonal" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/citas/${c.id}/confirmar`), 'Cita confirmada. El cliente recibe un email'); recargar(); }} aria-label={`Confirmar ${deCita}`}>Confirmar</Button>}
+                        {activa && esHoy && <Button variant="contained" onClick={() => { setKm(''); setNotas(''); setPuestoId(''); recibir.abrir(c); }} aria-label={`Recibir ${deCita}`}>Recibir</Button>}
+                        {activa && pasada && <Button onClick={() => noVino.abrir(c)} aria-label={`No vino: ${deCita}`}>No vino</Button>}
+                        {activa && <Button color="error" onClick={() => { setMotivo(''); cancelar.abrir(c); }} aria-label={`Cancelar ${deCita}`}>Cancelar</Button>}
+                        {c.ordenId && <Button href={`/mecanico/ordenes/${c.ordenId}`} aria-label={`Ver orden de ${c.vehiculo.matricula}`}>Ver orden</Button>}
                       </Stack>
                     </CardContent>
                   </Card>

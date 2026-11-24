@@ -50,7 +50,7 @@ export default function MiJornada() {
             <Carga {...jornadas}>
               {(d) => (
                 <TableContainer>
-                  <Table size="small">
+                  <Table size="small" aria-label="Jornadas de las últimas dos semanas">
                     <TableHead>
                       <TableRow><TableCell>Día</TableCell><TableCell>Entrada</TableCell><TableCell>Salida</TableCell><TableCell>Pausas</TableCell><TableCell>Trabajado</TableCell><TableCell /></TableRow>
                     </TableHead>

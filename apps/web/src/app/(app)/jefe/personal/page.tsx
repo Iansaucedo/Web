@@ -103,11 +103,11 @@ export default function Personal() {
                           <TableCell align="right">
                             {x.activo ? (
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.5} sx={{ justifyContent: 'flex-end', alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
-                                <Button size="small" onClick={() => { setFAus(hoy()); setHastaAus(''); setTipoAus('VACACIONES'); setNotaAus(''); ausencia.abrir(x); }}>Ausencia</Button>
-                                <Button size="small" color="error" onClick={() => { setMotivoBaja(''); bajaEmpleado.abrir(x); }}>Dar de baja</Button>
+                                <Button size="small" onClick={() => { setFAus(hoy()); setHastaAus(''); setTipoAus('VACACIONES'); setNotaAus(''); ausencia.abrir(x); }} aria-label={`Registrar ausencia de ${x.nombre}`}>Ausencia</Button>
+                                <Button size="small" color="error" onClick={() => { setMotivoBaja(''); bajaEmpleado.abrir(x); }} aria-label={`Dar de baja a ${x.nombre}`}>Dar de baja</Button>
                               </Stack>
                             ) : (
-                              <Button size="small" onClick={async () => { await acc.ejecutar(() => api.post(`/empleados/${x.empleadoId}/reactivar`), `${x.nombre} reactivado`); recargarTodo(); }}>Reactivar</Button>
+                              <Button size="small" onClick={async () => { await acc.ejecutar(() => api.post(`/empleados/${x.empleadoId}/reactivar`), `${x.nombre} reactivado`); recargarTodo(); }} aria-label={`Reactivar a ${x.nombre}`}>Reactivar</Button>
                             )}
                           </TableCell>
                         </TableRow>
@@ -147,12 +147,15 @@ export default function Personal() {
                       const asig = asignaciones.datos?.datos.find((a) => a.puestoId === x.id);
                       return (
                         <Stack key={x.id} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                          <Typography sx={{ width: { xs: 84, sm: 110 }, flexShrink: 0, fontWeight: 500, overflowWrap: 'anywhere' }}>{x.nombre}</Typography>
+                          <Typography id={`puesto-${x.id}`} sx={{ width: { xs: 84, sm: 110 }, flexShrink: 0, fontWeight: 500, overflowWrap: 'anywhere' }}>{x.nombre}</Typography>
                           {x.activo ? (
                             <TextField
                               select
                               size="small"
                               label="Mecánico"
+                              id={`mecanico-${x.id}`}
+                              // Todos los desplegables se llaman «Mecánico»: se antepone el puesto para saber de cuál es.
+                              slotProps={{ select: { SelectDisplayProps: { id: `mecanico-${x.id}-valor`, 'aria-labelledby': `puesto-${x.id} mecanico-${x.id}-label mecanico-${x.id}-valor` } } }}
                               sx={{ flex: 1, minWidth: 0 }}
                               value={asig?.empleadoId ?? ''}
                               onChange={async (e) => { await acc.ejecutar(() => api.put('/asignaciones', { fecha, puestoId: x.id, empleadoId: e.target.value || null }), 'Asignación guardada'); recargarTodo(); }}
@@ -163,7 +166,7 @@ export default function Personal() {
                           ) : (
                             <ChipEstado tono="neutro" texto="Desactivado" />
                           )}
-                          <Button size="small" onClick={async () => { await acc.ejecutar(() => api.patch(`/puestos/${x.id}`, { activo: !x.activo }), x.activo ? 'Puesto desactivado' : 'Puesto activado'); recargarTodo(); }}>{x.activo ? 'Desactivar' : 'Activar'}</Button>
+                          <Button size="small" onClick={async () => { await acc.ejecutar(() => api.patch(`/puestos/${x.id}`, { activo: !x.activo }), x.activo ? 'Puesto desactivado' : 'Puesto activado'); recargarTodo(); }} aria-label={`${x.activo ? 'Desactivar' : 'Activar'} ${x.nombre}`}>{x.activo ? 'Desactivar' : 'Activar'}</Button>
                         </Stack>
                       );
                     })}
@@ -188,7 +191,7 @@ export default function Personal() {
                           <TableCell>{x.email}</TableCell>
                           <TableCell>{x.rol === 'JEFE' ? 'Jefe de taller' : 'Mecánico'}</TableCell>
                           <TableCell>{x.usadaEn ? <ChipEstado tono="exito" texto="Ya ha entrado" /> : x.caducada ? <ChipEstado tono="error" texto="Caducada: vuelve a invitar" /> : <ChipEstado tono="aviso" texto="Pendiente" />}</TableCell>
-                          <TableCell align="right">{!x.usadaEn && <Button size="small" color="error" onClick={async () => { await acc.ejecutar(() => api.delete(`/invitaciones/${x.id}`), 'Alta anulada'); void invitaciones.recargar(); }}>Anular</Button>}</TableCell>
+                          <TableCell align="right">{!x.usadaEn && <Button size="small" color="error" onClick={async () => { await acc.ejecutar(() => api.delete(`/invitaciones/${x.id}`), 'Alta anulada'); void invitaciones.recargar(); }} aria-label={`Anular el alta de ${x.email}`}>Anular</Button>}</TableCell>
                         </TableRow>
                       ))}
                       {!i.datos.length && <TableRow><TableCell colSpan={4}>No hay altas.</TableCell></TableRow>}

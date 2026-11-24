@@ -91,7 +91,7 @@ function Vehiculos() {
                       {x.kilometros !== null && <Typography variant="body2" sx={{ mt: 1 }}>{x.kilometros.toLocaleString('es-ES')} km</Typography>}
                     </CardContent>
                     <CardActions>
-                      <Button onClick={() => setHistorial(x)}>Historial</Button>
+                      <Button onClick={() => setHistorial(x)} aria-label={`Historial de ${x.matricula}`}>Historial</Button>
                       <Tooltip title={x.enTaller ? 'Está en el taller: podrás eliminarlo cuando lo recojas' : ''}>
                         <span><Button color="error" disabled={x.enTaller} onClick={() => { setMotivo(''); borrar.abrir(x); }} aria-label={`Eliminar ${x.matricula}`}>Eliminar</Button></span>
                       </Tooltip>

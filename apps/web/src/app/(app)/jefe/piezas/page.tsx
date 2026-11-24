@@ -71,7 +71,7 @@ export default function Catalogo() {
             {(d) => (
               <Card>
                 <TableContainer>
-                  <Table>
+                  <Table aria-label="Catálogo de piezas">
                     <TableHead>
                       <TableRow>
                         <CeldaOrden listado={piezas} campo="referencia">Referencia</CeldaOrden>
@@ -232,7 +232,7 @@ function Movimientos({ piezaId }: { piezaId: string }) {
       {(d) => (
         <>
           <TableContainer>
-            <Table size="small">
+            <Table size="small" aria-label="Movimientos de stock">
               <TableHead><TableRow><TableCell>Fecha</TableCell><TableCell>Movimiento</TableCell><TableCell align="right">Cambio</TableCell><TableCell align="right">Stock</TableCell><TableCell>Quién · motivo</TableCell></TableRow></TableHead>
               <TableBody>
                 {d.datos.map((x) => (

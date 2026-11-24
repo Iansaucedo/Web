@@ -74,10 +74,10 @@ test('flujo completo de una reparación', async ({ page, request }) => {
     await d.getByLabel('Trabajo 1', { exact: true }).fill('Cambiar pastillas de freno');
     await d.getByLabel('Piezas (€)').fill('56');
     // Foto del disco: un PNG mínimo de verdad (el servidor comprueba los bytes)
-    await d.getByLabel('Añadir foto al trabajo 1').setInputFiles({ name: 'disco.png', mimeType: 'image/png', buffer: PNG_1PX });
+    await d.getByTestId('foto-trabajo-1').setInputFiles({ name: 'disco.png', mimeType: 'image/png', buffer: PNG_1PX });
     await expect(d.getByRole('img', { name: 'Foto 1 del trabajo 1' })).toBeVisible();
     // QA: un archivo que no es imagen no se sube
-    await d.getByLabel('Añadir foto al trabajo 1').setInputFiles({ name: 'virus.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
+    await d.getByTestId('foto-trabajo-1').setInputFiles({ name: 'virus.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
     await expect(d.getByText('«virus.pdf» no es JPEG, PNG ni WebP')).toBeVisible();
     await d.getByRole('button', { name: 'Añadir otro trabajo' }).click();
     await d.getByLabel('Trabajo 2', { exact: true }).fill('Sustituir sensor ABS');

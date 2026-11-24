@@ -40,7 +40,7 @@ export default function Constancias() {
         {(d) => (
           <Card>
             <TableContainer>
-              <Table>
+              <Table aria-label="Constancias de borrado">
                 <TableHead><TableRow><CeldaOrden listado={c} campo="fecha" dirInicial="desc">Fecha</CeldaOrden><CeldaOrden listado={c} campo="entidad">Qué</CeldaOrden><TableCell>Tipo</TableCell><TableCell>Quién</TableCell><TableCell>Motivo</TableCell></TableRow></TableHead>
                 <TableBody>
                   {d.datos.map((x) => (

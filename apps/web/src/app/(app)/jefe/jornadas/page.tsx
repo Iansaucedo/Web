@@ -52,8 +52,8 @@ export default function Jornadas() {
                     <Stack key={c.id} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }} data-testid="correccion">
                       <Typography variant="body2"><strong>{c.empleado}</strong> · {dia(c.fecha)} · {FICHAJE[c.tipo]} a las {c.hora} · «{c.motivo}»</Typography>
                       <Stack direction="row" spacing={1}>
-                        <Button size="small" variant="contained" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/correcciones/${c.id}/aceptar`), 'Corrección aplicada'); recargar(); }}>Aceptar</Button>
-                        <Button size="small" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/correcciones/${c.id}/rechazar`), 'Corrección rechazada'); recargar(); }}>Rechazar</Button>
+                        <Button size="small" variant="contained" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/correcciones/${c.id}/aceptar`), 'Corrección aplicada'); recargar(); }} aria-label={`Aceptar la corrección de ${c.empleado}, ${dia(c.fecha)}`}>Aceptar</Button>
+                        <Button size="small" disabled={acc.ocupado} onClick={async () => { await acc.ejecutar(() => api.post(`/correcciones/${c.id}/rechazar`), 'Corrección rechazada'); recargar(); }} aria-label={`Rechazar la corrección de ${c.empleado}, ${dia(c.fecha)}`}>Rechazar</Button>
                       </Stack>
                     </Stack>
                   ))}
@@ -72,7 +72,7 @@ export default function Jornadas() {
         {(d) => (
           <Card>
             <TableContainer>
-              <Table size="small">
+              <Table size="small" aria-label="Jornadas del equipo">
                 <TableHead><TableRow><CeldaOrden listado={jornadas} campo="nombre">Empleado</CeldaOrden><CeldaOrden listado={jornadas} campo="fecha" dirInicial="desc">Día</CeldaOrden><TableCell>Fichajes (pulsa para corregir)</TableCell><TableCell>Pausas</TableCell><TableCell>Trabajado</TableCell><TableCell /></TableRow></TableHead>
                 <TableBody>
                   {d.datos.map((j) => (

@@ -56,7 +56,7 @@ export default function Usuarios() {
         {(d) => (
           <Card>
             <TableContainer>
-              <Table>
+              <Table aria-label="Usuarios">
                 <TableHead>
                   <TableRow>
                     <CeldaOrden listado={lista} campo="nombre">Nombre</CeldaOrden>
@@ -84,8 +84,8 @@ export default function Usuarios() {
                       <TableCell>{u.activo ? <ChipEstado tono="exito" texto="Activo" /> : <ChipEstado tono="neutro" texto="De baja" />}</TableCell>
                       <TableCell align="right">
                         {u.id !== usuario.id && !(esCoDueno && (u.rol === 'DUENO' || u.rol === 'CO_DUENO')) && (u.activo
-                          ? <Button size="small" color="error" onClick={() => baja.abrir(u)}>Dar de baja</Button>
-                          : <Button size="small" onClick={async () => { await acc.ejecutar(() => api.patch(`/usuarios/${u.id}`, { activo: true }), 'Usuario reactivado'); void lista.recargar(); }}>Reactivar</Button>)}
+                          ? <Button size="small" color="error" onClick={() => baja.abrir(u)} aria-label={`Dar de baja a ${u.nombre}`}>Dar de baja</Button>
+                          : <Button size="small" onClick={async () => { await acc.ejecutar(() => api.patch(`/usuarios/${u.id}`, { activo: true }), 'Usuario reactivado'); void lista.recargar(); }} aria-label={`Reactivar a ${u.nombre}`}>Reactivar</Button>)}
                       </TableCell>
                     </TableRow>
                   ))}

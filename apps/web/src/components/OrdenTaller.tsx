@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import MuiLink from '@mui/material/Link';
@@ -43,6 +43,7 @@ type FotoSubida = { id: string; url: string };
 function FotosTrabajo({ fotos, onCambio, n }: { fotos: FotoSubida[]; onCambio: (f: FotoSubida[]) => void; n: number }) {
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const archivo = useRef<HTMLInputElement>(null);
   const elegir = async (archivos: FileList | null) => {
     if (!archivos?.length) return;
     setError(null);
@@ -77,10 +78,14 @@ function FotosTrabajo({ fotos, onCambio, n }: { fotos: FotoSubida[]; onCambio: (
           </Box>
         ))}
         {fotos.length < MAX_FOTOS && (
-          <Button component="label" variant="outlined" startIcon={<AddIcon />} disabled={subiendo}>
-            {subiendo ? 'Subiendo…' : 'Añadir foto'}
-            <input hidden type="file" accept={TIPOS_FOTO.join(',')} multiple capture="environment" aria-label={`Añadir foto al trabajo ${n}`} onChange={(e) => { void elegir(e.target.files); e.target.value = ''; }} />
-          </Button>
+          // Un <button> que abre el selector, no un <label component>: el label con role=button de MUI no
+          // responde a Enter ni a Espacio, y con teclado no se podía añadir ninguna foto.
+          <>
+            <Button variant="outlined" startIcon={<AddIcon />} disabled={subiendo} onClick={() => archivo.current?.click()} aria-label={subiendo ? undefined : `Añadir foto al trabajo ${n}`}>
+              {subiendo ? 'Subiendo…' : 'Añadir foto'}
+            </Button>
+            <input ref={archivo} hidden type="file" data-testid={`foto-trabajo-${n}`} accept={TIPOS_FOTO.join(',')} multiple capture="environment" onChange={(e) => { void elegir(e.target.files); e.target.value = ''; }} />
+          </>
         )}
         <Typography variant="caption" color="text.secondary">El cliente verá las fotos junto al trabajo</Typography>
       </Stack>
@@ -113,7 +118,7 @@ function NuevaSolicitud({ ordenId, tarifa, abierto, onCerrar, onHecho }: { orden
         <Stack key={i} spacing={1.5} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
           <Stack direction="row" spacing={1}>
             <TextField label={`Trabajo ${i + 1}`} value={l.descripcion} onChange={(e) => setLineas(lineas.map((x, j) => (j === i ? { ...x, descripcion: e.target.value } : x)))} />
-            {lineas.length > 1 && <IconButton aria-label="Quitar trabajo" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}><DeleteIcon /></IconButton>}
+            {lineas.length > 1 && <IconButton aria-label={`Quitar trabajo ${i + 1}`} onClick={() => setLineas(lineas.filter((_, j) => j !== i))}><DeleteIcon /></IconButton>}
           </Stack>
           <Stack direction="row" spacing={1.5}>
             <TextField select label="Horas" value={l.horas} onChange={(e) => setLineas(lineas.map((x, j) => (j === i ? { ...x, horas: e.target.value } : x)))}>
@@ -163,7 +168,7 @@ function RegistrarPieza({ partida, abierto, onCerrar, onHecho }: { partida: Part
   const valido = n >= 1 && Number.isInteger(n) && (tab === 0 ? Boolean(piezaId) && (!pieza || pieza.stock >= n) : tab === 1 ? descripcion.trim().length > 0 : Boolean(piezaId) || descripcion.trim().length >= 3);
   return (
     <Confirmar abierto={abierto} titulo={`Piezas · ${partida?.descripcion ?? ''}`} textoConfirmar={['Registrar', 'Registrar', 'Pedir'][tab]} ocupado={ocupado} error={error} onCerrar={() => { limpiarError(); onCerrar(); }} onConfirmar={guardar} deshabilitado={!valido}>
-      <Tabs value={tab} onChange={(_, v) => { setTab(v); limpiarError(); }} variant="fullWidth">
+      <Tabs aria-label="Qué registrar" value={tab} onChange={(_, v) => { setTab(v); limpiarError(); }} variant="fullWidth">
         <Tab label="Del almacén" />
         <Tab label="Quitada" />
         <Tab label="Pedir" />
@@ -253,9 +258,9 @@ function TrabajoAceptado({ p, ordenId, editable, onHecho }: { p: Partida; ordenI
       )}
       {editable && !p.terminadaEn && (
         <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 1 }}>
-          <Button size="small" variant="tonal" onClick={() => setHoras(true)}>Registrar horas</Button>
-          <Button size="small" variant="tonal" onClick={() => setPiezas(true)}>Registrar pieza</Button>
-          <Button size="small" onClick={() => setTerminar(true)}>Marcar terminado</Button>
+          <Button size="small" variant="tonal" onClick={() => setHoras(true)} aria-label={`Registrar horas: ${p.descripcion}`}>Registrar horas</Button>
+          <Button size="small" variant="tonal" onClick={() => setPiezas(true)} aria-label={`Registrar pieza: ${p.descripcion}`}>Registrar pieza</Button>
+          <Button size="small" onClick={() => setTerminar(true)} aria-label={`Marcar terminado: ${p.descripcion}`}>Marcar terminado</Button>
         </Stack>
       )}
       <Confirmar
