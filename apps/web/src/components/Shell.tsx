@@ -152,7 +152,7 @@ const iniciales = (nombre: string) =>
     .join('');
 
 const ANCHO = 280;
-const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.default' } as const;
+const PAPEL = { width: ANCHO, boxSizing: 'border-box', borderRight: 0, bgcolor: 'background.paper' } as const;
 
 function Campana() {
   const [ancla, setAncla] = useState<HTMLElement | null>(null);

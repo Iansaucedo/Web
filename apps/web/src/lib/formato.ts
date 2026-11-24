@@ -8,6 +8,13 @@ export const fechaCorta = (iso: string) => new Intl.DateTimeFormat('es-ES', { ti
 export const fechaHora = (iso: string) =>
   new Intl.DateTimeFormat('es-ES', { timeZone: ZONA, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 export const hora = (iso: string) => new Intl.DateTimeFormat('es-ES', { timeZone: ZONA, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+/** "2026-11-10" → "10/11/26" (dd/mm/aa). */
+export const fechaDdMmAa = (d: string) => {
+  const parte = d.split('T')[0] ?? d;
+  const [y, m, dia] = parte.split('-');
+  if (!y || !m || !dia) return d;
+  return `${dia.padStart(2, '0')}/${m.padStart(2, '0')}/${y.slice(-2)}`;
+};
 /** "2026-11-10" → "mar, 10 nov" (sin desfases de zona: el día es del calendario). */
 export const dia = (d: string) => new Intl.DateTimeFormat('es-ES', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00Z`));
 export const diaLargo = (d: string) => new Intl.DateTimeFormat('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${d}T12:00:00Z`));

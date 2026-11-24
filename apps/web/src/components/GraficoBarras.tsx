@@ -69,6 +69,11 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
               const r = Math.min(4, h);
               const x0 = cx - barra / 2;
               const top = y(d.y);
+              const paso = Math.ceil(datos.length / 10);
+              const esUltimo = i === datos.length - 1;
+              const esMultiplo = i % paso === 0;
+              const muyCercaDelFinal = datos.length - 1 - i < paso * 0.75;
+              const mostrarTexto = (esMultiplo && !muyCercaDelFinal) || esUltimo;
               return (
                 <g key={d.x} onMouseEnter={() => setActivo(i)} onMouseLeave={() => setActivo(null)}>
                   <rect x={izq + banda * i} y={0} width={banda} height={alto - abajo} fill="transparent" />
@@ -79,7 +84,7 @@ export function GraficoBarras({ datos, etiqueta, valor, formato, titulo }: { dat
                       opacity={activo === null || activo === i ? 1 : 0.45}
                     />
                   )}
-                  {(i % Math.ceil(datos.length / 10) === 0 || i === datos.length - 1) && (
+                  {mostrarTexto && (
                     <text x={cx} y={alto - 8} textAnchor="middle" fontSize={13} fill="#40484B">{etiqueta(d.x)}</text>
                   )}
                 </g>

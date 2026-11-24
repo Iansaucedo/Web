@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import { Cabecera, Carga } from '../../../components/Comunes';
 import { GraficoBarras } from '../../../components/GraficoBarras';
 import { useDatos } from '../../../lib/hooks';
-import { dia, euros, horasMin, hoy, sumarDias, cuantos } from '../../../lib/formato';
+import { dia, euros, horasMin, hoy, sumarDias, cuantos, fechaDdMmAa } from '../../../lib/formato';
 
 interface Estadisticas {
   facturacion: { base: number; iva: number; total: number };
@@ -65,7 +65,7 @@ export default function Estadisticas() {
               </Grid>
               <Card>
                 <CardContent>
-                  <GraficoBarras titulo="Facturación por día" valor="Facturado" datos={d.porDia.map((x) => ({ x: x.fecha, y: x.facturadoCentimos }))} etiqueta={dia} formato={(n) => euros(n).replace(/,00\s/, ' ')} />
+                  <GraficoBarras titulo="Facturación por día" valor="Facturado" datos={d.porDia.map((x) => ({ x: x.fecha, y: x.facturadoCentimos }))} etiqueta={fechaDdMmAa} formato={(n) => euros(n).replace(/,00\s/, ' ')} />
                 </CardContent>
               </Card>
               <Grid container spacing={2}>
