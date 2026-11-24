@@ -270,7 +270,7 @@ test('Supervisión: el dueño cambia el IVA, ve estadísticas y la trazabilidad'
   await page.goto('/dueno');
   await expect(page.getByText('Facturado (IVA incl.)')).toBeVisible();
   await page.getByRole('button', { name: 'Tabla' }).click();
-  await expect(page.getByRole('cell', { name: /lun, 9 nov/ })).toBeVisible();
+  await expect(page.getByRole('cell', { name: /09\/11\/26|lun, 9 nov/ })).toBeVisible();
   await page.goto('/dueno/trazabilidad');
   await page.getByLabel('Matrícula, marca o cliente').fill('9999');
   await expect(page.getByText('Ningún vehículo coincide.')).toBeVisible();

@@ -202,8 +202,7 @@ export function montarRutas(router: Router) {
         if (usuario && enPlazoDeRecuperacion(usuario) && !def.permiteEnBaja) {
           throw new ErrorApp(403, 'CUENTA_EN_BAJA', 'Tu cuenta está dada de baja. Recupérala para seguir usándola');
         }
-        const esGestionSuprema = usuario!.rol === 'DUENO' || usuario!.rol === 'CO_DUENO';
-        if (Array.isArray(acceso) && !esGestionSuprema && !acceso.includes(usuario!.rol)) throw prohibido();
+        if (Array.isArray(acceso) && usuario!.rol !== 'DUENO' && usuario!.rol !== 'CO_DUENO' && !acceso.includes(usuario!.rol)) throw prohibido();
         // El archivo se lee solo después de saber quién lo envía y si puede: un anónimo no hace cargar 5 MB en memoria.
         if (leerBinario) await new Promise<void>((ok, ko) => leerBinario(req, res, (e?: unknown) => (e ? ko(e) : ok())));
         await comprobarLimiteDiario(def, usuario);
