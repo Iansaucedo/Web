@@ -297,7 +297,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const navegacion = (
     <Box component="nav" aria-label="Menú principal" sx={{ p: 1.5, pt: 0 }}>
       {grupos.map((g, i) => (
-        <List key={i} subheader={g.titulo ? <ListSubheader sx={{ bgcolor: 'transparent' }}>{g.titulo}</ListSubheader> : undefined}>
+        <List key={i} subheader={g.titulo ? <ListSubheader disableSticky sx={{ bgcolor: 'transparent' }}>{g.titulo}</ListSubheader> : undefined}>
           {g.entradas.map((e) => (
             <ListItem key={e.ruta} disablePadding>
               <ListItemButton component={Link} href={e.ruta} selected={activa?.ruta === e.ruta} aria-current={activa?.ruta === e.ruta ? 'page' : undefined} onClick={() => setAbierto(false)}>
